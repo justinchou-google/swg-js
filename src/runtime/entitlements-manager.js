@@ -202,6 +202,7 @@ export class EntitlementsManager {
    * @return {!Promise<!Entitlements>}
    */
   async getEntitlements(params) {
+    return Promise.resolve();
     // Remain backwards compatible by accepting
     // `encryptedDocumentKey` string as a first param.
     if (typeof params === 'string') {

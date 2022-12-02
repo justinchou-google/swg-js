@@ -231,7 +231,7 @@ export class BasicRuntime {
       alwaysShow,
     });
     this.setOnLoginRequest();
-    this.processEntitlements();
+    // this.processEntitlements();
   }
 
   /** @override */

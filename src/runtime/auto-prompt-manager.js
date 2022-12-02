@@ -135,6 +135,14 @@ export class AutoPromptManager {
    * @return {!Promise}
    */
   async showAutoPrompt(params) {
+    const alwaysShowSurvey = true;
+    if (alwaysShowSurvey) {
+      this.audienceActionPrompt_({
+        action: 'TYPE_REGISTRATION_WALL',
+        autoPromptType: params.autoPromptType,
+      })();
+      return;
+    }
     // Manual override of display rules, mainly for demo purposes.
     if (params.alwaysShow) {
       this.showPrompt_(
