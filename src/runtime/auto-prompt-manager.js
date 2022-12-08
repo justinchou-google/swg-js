@@ -133,7 +133,7 @@ export class AutoPromptManager {
     const alwaysShowSurvey = true;
     if (alwaysShowSurvey) {
       this.audienceActionPrompt_({
-        action: 'TYPE_REGISTRATION_WALL',
+        action: 'TYPE_REWARDED_SURVEY',
         autoPromptType: params.autoPromptType,
       })();
       return;

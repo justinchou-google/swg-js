@@ -891,7 +891,7 @@ export class ConfiguredRuntime {
             }
           } catch (ex) {}
         }
-        return entitlements.clone();
+        return entitlements?.clone() || null;
       });
   }
 
