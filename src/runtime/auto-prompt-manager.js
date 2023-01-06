@@ -211,6 +211,9 @@ export class AutoPromptManager {
         })
       : params.displayLargePromptFn;
 
+    const displayDelayMs =
+      (clientConfig?.autoPromptConfig?.clientDisplayTrigger
+        ?.displayDelaySeconds || 0) * SECOND_IN_MILLIS;
     if (!shouldShowAutoPrompt) {
       if (
         this.shouldShowBlockingPrompt_(
@@ -219,7 +222,12 @@ export class AutoPromptManager {
         ) &&
         promptFn
       ) {
-        promptFn();
+        const isBlockingPromptWithDelay = this.isActionPromptWithDelay_(
+          potentialActionPromptType
+        );
+        this.deps_
+          .win()
+          .setTimeout(promptFn, isBlockingPromptWithDelay ? displayDelayMs : 0);
       }
       return;
     }
@@ -230,7 +238,7 @@ export class AutoPromptManager {
         this.getPromptTypeToDisplay_(params.autoPromptType),
         promptFn
       );
-    }, (clientConfig?.autoPromptConfig.clientDisplayTrigger.displayDelaySeconds || 0) * SECOND_IN_MILLIS);
+    }, displayDelayMs);
   }
 
   /**
@@ -419,14 +427,33 @@ export class AutoPromptManager {
       autoPromptType === AutoPromptType.CONTRIBUTION ||
       autoPromptType === AutoPromptType.CONTRIBUTION_LARGE
     ) {
-      if (!dismissedPrompts) {
+      const preferSurveyOverContributionPrompt =
+        await this.isExperimentEnabled_(
+          article,
+          ExperimentFlags.SURVEY_TRIGGERING_PRIORITY
+        );
+
+      if (!preferSurveyOverContributionPrompt && !dismissedPrompts) {
         this.promptDisplayed_ = AutoPromptType.CONTRIBUTION;
         return undefined;
       }
-      const previousPrompts = dismissedPrompts.split(',');
-      potentialActions = potentialActions.filter(
-        (action) => !previousPrompts.includes(action.type)
-      );
+
+      if (dismissedPrompts) {
+        const previousPrompts = dismissedPrompts.split(',');
+        potentialActions = potentialActions.filter(
+          (action) => !previousPrompts.includes(action.type)
+        );
+      }
+
+      if (
+        preferSurveyOverContributionPrompt &&
+        potentialActions
+          .map((action) => action.type)
+          .includes(TYPE_REWARDED_SURVEY)
+      ) {
+        this.promptDisplayed_ = TYPE_REWARDED_SURVEY;
+        return TYPE_REWARDED_SURVEY;
+      }
 
       // If all actions have been dismissed or the frequency indicates that we
       // should show the Contribution prompt again regardless of previous dismissals,
@@ -559,6 +586,18 @@ export class AutoPromptManager {
   }
 
   /**
+   * Determines whether the given prompt type is an action prompt type with display delay.
+   * @param {string|undefined} potentialActionPromptType
+   * @returns {boolean}
+   */
+  isActionPromptWithDelay_(potentialActionPromptType) {
+    return (
+      !this.pageConfig_.isLocked() &&
+      potentialActionPromptType === TYPE_REWARDED_SURVEY
+    );
+  }
+
+  /**
    * Listens for relevant prompt impression events, dismissal events, and completed
    * action events, and logs them to local storage for use in determining whether
    * to display the prompt in the future.
@@ -655,9 +694,28 @@ export class AutoPromptManager {
     if (actionType === TYPE_REWARDED_SURVEY) {
       const isAnalyticsEligible =
         GoogleAnalyticsEventListener.isGaEligible(this.deps_) ||
-        GoogleAnalyticsEventListener.isGtagEligible(this.deps_);
+        GoogleAnalyticsEventListener.isGtagEligible(this.deps_) ||
+        GoogleAnalyticsEventListener.isGtmEligible(this.deps_);
       return isSurveyEligible && isAnalyticsEligible;
     }
     return true;
+  }
+
+  /**
+   * Checks if provided ExperimentFlag is returned in article endpoint.
+   * @param {?./entitlements-manager.Article|undefined} article
+   * @param {string} experimentFlag
+   * @return {!Promise<boolean>}
+   */
+  async isExperimentEnabled_(article, experimentFlag) {
+    if (!article) {
+      return false;
+    }
+
+    const articleExpFlags =
+      await this.entitlementsManager_.parseArticleExperimentConfigFlags(
+        article
+      );
+    return articleExpFlags.includes(experimentFlag);
   }
 }
