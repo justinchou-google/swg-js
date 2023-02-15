@@ -1,5 +1,5 @@
 /**
- * Copyright 2018 The Subscribe with Google Authors. All Rights Reserved.
+ * Copyright 2019 The Subscribe with Google Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,8 +14,21 @@
  * limitations under the License.
  */
 
-import {Doc} from '../src/model/doc';
-import {PageConfig} from '../src/model/page-config';
-import {PageConfigResolver} from '../src/model/page-config-resolver';
+module.exports = {
+  '@tags': ['basic'],
 
-export {Doc, PageConfig, PageConfigResolver};
+  'Show button': (browser) => {
+    const basic = browser.page.basic();
+    basic
+      .navigate()
+      .waitForElementPresent('@swgBasicButton', 'Found button')
+      .waitForElementVisible('@swgBasicButton')
+      .click('@swgBasicButton')
+      .viewContributionOffers()
+      .assert.containsText('.XWoc8b', 'Swgjs Contribution Demos')
+      .assert.containsText('.h57Fgb', '$1')
+      .contribute()
+      .checkPayment()
+      .end();
+  },
+};

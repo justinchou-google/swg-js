@@ -283,6 +283,29 @@ describes.realWin('GaaMetering', () => {
       ).to.be.true;
     });
 
+    it('succeeds for valid params with showcaseEntitlement', () => {
+      expect(
+        GaaMetering.validateParameters({
+          googleApiClientId: GOOGLE_API_CLIENT_ID,
+          allowedReferrers: ['example.com', 'test.com', 'localhost'],
+          userState: {
+            id: 'user1235',
+            registrationTimestamp: 1602763054,
+            subscriptionTimestamp: 1602763094,
+            granted: false,
+          },
+          /* Ommiting unlockArticle */
+          showcaseEntitlement: 'test showcaseEntitlement',
+          showPaywall: () => {},
+          handleLogin: () => {},
+          handleSwGEntitlement: () => {},
+          registerUserPromise: new Promise(() => {}),
+          handleLoginPromise: new Promise(() => {}),
+          publisherEntitlementPromise: new Promise(() => {}),
+        })
+      ).to.be.true;
+    });
+
     it('succeeds for valid params with authorizationUrl', () => {
       expect(
         GaaMetering.validateParameters({
@@ -1058,31 +1081,29 @@ describes.realWin('GaaMetering', () => {
       );
       self.document.referrer = 'https://www.google.com';
 
-      expect(
-        GaaMetering.init({
-          googleApiClientId: GOOGLE_API_CLIENT_ID,
-          allowedReferrers: [
-            'example.com',
-            'test.com',
-            'localhost',
-            'google.com',
-          ],
-          userState: {
-            id: 'user1235',
-            registrationTimestamp: 1602763054,
-            subscriptionTimestamp: 1602763094,
-            granted: true,
-            grantReason: 'SUBSCRIBER',
-          },
-          unlockArticle: () => {},
-          showPaywall: () => {},
-          handleLogin: () => {},
-          handleSwGEntitlement: () => {},
-          registerUserPromise: new Promise(() => {}),
-          handleLoginPromise: new Promise(() => {}),
-          publisherEntitlementPromise: new Promise(() => {}),
-        })
-      );
+      GaaMetering.init({
+        googleApiClientId: GOOGLE_API_CLIENT_ID,
+        allowedReferrers: [
+          'example.com',
+          'test.com',
+          'localhost',
+          'google.com',
+        ],
+        userState: {
+          id: 'user1235',
+          registrationTimestamp: 1602763054,
+          subscriptionTimestamp: 1602763094,
+          granted: true,
+          grantReason: 'SUBSCRIBER',
+        },
+        unlockArticle: () => {},
+        showPaywall: () => {},
+        handleLogin: () => {},
+        handleSwGEntitlement: () => {},
+        registerUserPromise: new Promise(() => {}),
+        handleLoginPromise: new Promise(() => {}),
+        publisherEntitlementPromise: new Promise(() => {}),
+      });
 
       await tick();
 
@@ -1309,7 +1330,6 @@ describes.realWin('GaaMetering', () => {
           registrationTimestamp: 1602763054,
         },
         showcaseEntitlement: 'test showcaseEntitlement',
-        unlockArticle: () => {},
         showPaywall: () => {},
         handleLogin: () => {},
         handleSwGEntitlement: () => {},
@@ -1432,6 +1452,73 @@ describes.realWin('GaaMetering', () => {
         '[Subscriptions]',
         "Publisher entitlement isn't valid"
       );
+    });
+
+    it('sets onLoginRequest callback', async () => {
+      sandbox.stub(GaaMetering, 'handleLoginRequest');
+
+      // Successfully init, setting a callback in the process.
+      QueryStringUtils.getQueryString.returns(
+        '?gaa_at=gaa&gaa_n=n0nc3&gaa_sig=s1gn4tur3&gaa_ts=99999999'
+      );
+      self.document.referrer = 'https://www.google.com';
+      GaaMetering.init({
+        googleApiClientId: GOOGLE_API_CLIENT_ID,
+        allowedReferrers: [
+          'example.com',
+          'test.com',
+          'localhost',
+          'google.com',
+        ],
+        userState: {},
+        unlockArticle: () => {},
+        showPaywall: () => {},
+        handleLogin: () => {},
+        handleSwGEntitlement: () => {},
+        registerUserPromise: new Promise(() => {}),
+        handleLoginPromise: new Promise(() => {}),
+        publisherEntitlementPromise: new Promise(() => {}),
+      });
+
+      expect(subscriptionsMock.setOnLoginRequest).to.be.called;
+      expect(GaaMetering.handleLoginRequest).to.not.be.called;
+      const callback = subscriptionsMock.setOnLoginRequest.lastCall.firstArg;
+      callback();
+      expect(GaaMetering.handleLoginRequest).to.be.called;
+    });
+
+    it('sets onEntitlementsResponse callback', async () => {
+      sandbox.stub(GaaMetering, 'setEntitlements');
+
+      // Successfully init, setting a callback in the process.
+      QueryStringUtils.getQueryString.returns(
+        '?gaa_at=gaa&gaa_n=n0nc3&gaa_sig=s1gn4tur3&gaa_ts=99999999'
+      );
+      self.document.referrer = 'https://www.google.com';
+      GaaMetering.init({
+        googleApiClientId: GOOGLE_API_CLIENT_ID,
+        allowedReferrers: [
+          'example.com',
+          'test.com',
+          'localhost',
+          'google.com',
+        ],
+        userState: {},
+        unlockArticle: () => {},
+        showPaywall: () => {},
+        handleLogin: () => {},
+        handleSwGEntitlement: () => {},
+        registerUserPromise: new Promise(() => {}),
+        handleLoginPromise: new Promise(() => {}),
+        publisherEntitlementPromise: new Promise(() => {}),
+      });
+
+      expect(subscriptionsMock.setOnEntitlementsResponse).to.be.called;
+      expect(GaaMetering.setEntitlements).to.not.be.called;
+      const callback =
+        subscriptionsMock.setOnEntitlementsResponse.lastCall.firstArg;
+      callback();
+      expect(GaaMetering.setEntitlements).to.be.called;
     });
   });
 

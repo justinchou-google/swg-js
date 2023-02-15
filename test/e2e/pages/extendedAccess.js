@@ -1,5 +1,5 @@
 /**
- * Copyright 2021 The Subscribe with Google Authors. All Rights Reserved.
+ * Copyright 2019 The Subscribe with Google Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,11 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+'use strict';
 
-export {
-  GaaGoogle3pSignInButton,
-  GaaGoogleSignInButton,
-  GaaMeteringRegwall,
-  GaaUserDef,
-  GoogleUserDef,
-} from '../src/utils/gaa';
+/**
+ * @fileoverview Page object for the extended access feature on scenic.
+ */
+
+module.exports = {
+  url: function () {
+    return this.api.launchUrl + '?metering';
+  },
+  elements: {
+    swgRegwallDialog: {
+      selector: '#swg-regwall-dialog',
+    },
+  },
+};
