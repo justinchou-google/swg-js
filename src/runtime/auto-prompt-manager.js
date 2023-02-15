@@ -276,6 +276,10 @@ export class AutoPromptManager {
    * @returns {!Promise<boolean>}
    */
   async shouldShowAutoPrompt_(clientConfig, entitlements, autoPromptType) {
+    const shouldShow = true;
+    if (shouldShow) {
+      return true;
+    }
     // If false publication predicate was returned in the response, don't show
     // the prompt.
     if (
@@ -294,9 +298,9 @@ export class AutoPromptManager {
     }
 
     // If we found a valid entitlement, don't show the prompt.
-    if (entitlements.enablesThis()) {
-      return Promise.resolve(false);
-    }
+    // if (entitlements.enablesThis()) {
+    //   return Promise.resolve(false);
+    // }
 
     // The auto prompt is only for non-paygated content.
     if (this.pageConfig_.isLocked()) {
@@ -605,10 +609,11 @@ export class AutoPromptManager {
    * @returns {boolean}
    */
   shouldShowBlockingPrompt_(entitlements, hasPotentialAudienceAction) {
-    return (
-      (this.pageConfig_.isLocked() || hasPotentialAudienceAction) &&
-      !entitlements.enablesThis()
-    );
+    return entitlements && hasPotentialAudienceAction && false;
+    // return (
+    //   (this.pageConfig_.isLocked() || hasPotentialAudienceAction) &&
+    //   !entitlements.enablesThis()
+    // );
   }
 
   /**

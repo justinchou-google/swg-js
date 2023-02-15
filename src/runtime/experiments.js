@@ -153,7 +153,8 @@ function parseSetExperiment(win, experimentMap, spec) {
     fraction = parseInt(spec, 10);
   }
   if (isNaN(fraction)) {
-    throw new Error('invalid fraction');
+    return;
+    // throw new Error('invalid fraction');
   }
 
   // Calculate "on"/"off".
