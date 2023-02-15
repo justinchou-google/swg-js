@@ -609,11 +609,14 @@ export class AutoPromptManager {
    * @returns {boolean}
    */
   shouldShowBlockingPrompt_(entitlements, hasPotentialAudienceAction) {
-    return entitlements && hasPotentialAudienceAction && false;
-    // return (
-    //   (this.pageConfig_.isLocked() || hasPotentialAudienceAction) &&
-    //   !entitlements.enablesThis()
-    // );
+    const doNotShowBlockingPrompt = true;
+    if (doNotShowBlockingPrompt) {
+      return false;
+    }
+    return (
+      (this.pageConfig_.isLocked() || hasPotentialAudienceAction) &&
+      !entitlements.enablesThis()
+    );
   }
 
   /**
