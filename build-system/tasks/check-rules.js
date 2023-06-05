@@ -53,12 +53,8 @@ const forbiddenTerms = {
     message:
       'If you run against this, use console/*OK*/.log to ' +
       'allowlist a legit case.',
-    allowlist: ['src/main.js', 'src/components/activities.js'],
+    allowlist: ['src/main.ts', 'src/components/activities.js'],
     checkInTestFolder: true,
-  },
-  '(?:var|let|const) +IS_DEV +=': {
-    message: 'IS_DEV local var only allowed in mode.js',
-    allowlist: ['src/mode.js'],
   },
   'cookie\\W': {
     message: requiresReviewPrivacy,
@@ -66,7 +62,7 @@ const forbiddenTerms = {
       'examples/sample-pub/sample-pub-app.js',
       'examples/sample-pub/service/sample-pub-oauth-app.js',
       'examples/sample-pub/service/authorization-app.js',
-      'src/runtime/propensity-server.js',
+      'src/runtime/propensity-server.ts',
     ],
   },
   'getCookie\\W': {
@@ -83,15 +79,11 @@ const forbiddenTerms = {
   },
   'localStorage': {
     message: requiresReviewPrivacy,
-    allowlist: ['src/runtime/pay-client.js', 'src/runtime/storage.js'],
+    allowlist: ['src/runtime/pay-client.ts', 'src/runtime/storage.ts'],
   },
   'sessionStorage': {
     message: requiresReviewPrivacy,
-    allowlist: [
-      'src/runtime/experiments.js',
-      'src/runtime/storage.js',
-      'src/utils/gaa.js',
-    ],
+    allowlist: ['src/runtime/experiments.ts', 'src/runtime/storage.ts'],
   },
   'indexedDB': {
     message: requiresReviewPrivacy,
@@ -148,8 +140,8 @@ const forbiddenTermsSrcInclusive = {
   'Text(Encoder|Decoder)\\(': {
     message:
       'TextEncoder/TextDecoder is not supported in all browsers.' +
-      'Please use UTF8 utilities from src/bytes.js',
-    allowlist: ['src/utils/bytes.js'],
+      'Please use UTF8 utilities from src/utils/bytes.ts',
+    allowlist: ['src/utils/bytes.ts'],
   },
   'reject\\(\\)': {
     message:
@@ -159,17 +151,12 @@ const forbiddenTermsSrcInclusive = {
   },
   '\\.getTime\\(\\)': {
     message: 'Unless you do weird date math (allowlist), use Date.now().',
-    allowlist: ['src/utils/date-utils.js'],
   },
   '\\<\\<\\<\\<\\<\\<': {
     message: 'Unresolved merge conflict.',
   },
   '\\>\\>\\>\\>\\>\\>': {
     message: 'Unresolved merge conflict.',
-  },
-  '\\.trim(Left|Right)\\(\\)': {
-    message: 'Unsupported on IE; use trim() or a helper instead.',
-    allowlist: [],
   },
 };
 

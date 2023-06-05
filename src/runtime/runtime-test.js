@@ -27,7 +27,6 @@ import {
   ProductType,
   ReplaceSkuProrationMode,
   ShowcaseEvent,
-  Subscriptions,
 } from '../api/subscriptions';
 import {AnalyticsService} from './analytics-service';
 import {ClientConfigManager} from './client-config-manager';
@@ -44,7 +43,6 @@ import {DialogManager} from '../components/dialog-manager';
 import {Entitlement, Entitlements} from '../api/entitlements';
 import {Event} from '../api/logger-api';
 import {ExperimentFlags} from './experiment-flags';
-import {Fetcher, XhrFetcher} from './fetcher';
 import {GlobalDoc} from '../model/doc';
 import {JsError} from './jserror';
 import {
@@ -63,6 +61,7 @@ import {Propensity} from './propensity';
 import {SubscribeResponse} from '../api/subscribe-response';
 import {SubscriptionLinkingFlow} from './subscription-linking-flow';
 import {WaitForSubscriptionLookupApi} from './wait-for-subscription-lookup-api';
+import {XhrFetcher} from './fetcher';
 import {analyticsEventToGoogleAnalyticsEvent} from './event-type-mapping';
 import {createElement} from '../utils/dom';
 import {
@@ -71,6 +70,7 @@ import {
   setExperimentsStringForTesting,
 } from './experiments';
 import {parseUrl} from '../utils/url';
+import {tick} from '../../test/tick';
 
 describes.realWin('installRuntime', (env) => {
   let win;
@@ -109,9 +109,7 @@ describes.realWin('installRuntime', (env) => {
     dep(() => {
       progress += '4';
     });
-
-    // Wait for ready signal.
-    await getRuntime().whenReady();
+    await tick();
     expect(progress).to.equal('1234');
 
     // Few more.
@@ -121,7 +119,7 @@ describes.realWin('installRuntime', (env) => {
     dep(() => {
       progress += '6';
     });
-    await getRuntime().whenReady();
+    await tick();
     expect(progress).to.equal('123456');
   });
 
@@ -130,19 +128,6 @@ describes.realWin('installRuntime', (env) => {
     const runtime1 = getRuntime();
     installRuntime(win);
     expect(getRuntime()).to.equal(runtime1);
-  });
-
-  it('implements Subscriptions interface', async () => {
-    const promise = new Promise((resolve) => {
-      dep(resolve);
-    });
-    installRuntime(win);
-
-    const subscriptions = await promise;
-    const keys = Object.getOwnPropertyNames(Subscriptions.prototype);
-    for (const key of keys) {
-      expect(subscriptions[key]).to.exist;
-    }
   });
 
   it('handles recursive calls after installation', async () => {
@@ -159,9 +144,7 @@ describes.realWin('installRuntime', (env) => {
       });
     });
 
-    await getRuntime().whenReady();
-    await getRuntime().whenReady();
-    await getRuntime().whenReady();
+    await tick(2);
     expect(progress).to.equal('123');
   });
 
@@ -179,26 +162,27 @@ describes.realWin('installRuntime', (env) => {
 
     installRuntime(win);
 
-    await getRuntime().whenReady();
-    await getRuntime().whenReady();
-    await getRuntime().whenReady();
+    await tick(2);
     expect(progress).to.equal('123');
   });
 
-  it('implements all APIs', async () => {
-    installRuntime(win);
-
-    const subscriptions = await new Promise((resolve) => {
-      dep(resolve);
+  it('RuntimeReadyEvent logged from callWhenRuntimeIsReady', async () => {
+    // Sending RuntimeReadyEvent is blocked until runtime has been configured.
+    const config = new PageConfig('pub1', true);
+    const configPromise = Promise.resolve(config);
+    const resolveStub = sandbox
+      .stub(PageConfigResolver.prototype, 'resolveConfig')
+      .callsFake(() => configPromise);
+    let progress = '';
+    dep(() => {
+      progress += '1';
     });
 
-    const names = Object.getOwnPropertyNames(Subscriptions.prototype);
-    for (const name of names) {
-      if (name == 'constructor') {
-        continue;
-      }
-      expect(subscriptions).to.have.property(name);
-    }
+    installRuntime(win);
+
+    await tick();
+    expect(resolveStub).to.be.calledOnce;
+    expect(progress).to.equal('1');
   });
 });
 
@@ -370,6 +354,21 @@ describes.realWin('Runtime', (env) => {
       const analytics = configuredRuntime.analytics();
       expect(analytics.readyForLogging_).to.be.true;
     });
+
+    it('sets article endpoint on by default', async () => {
+      runtime = new Runtime(win);
+      const configuredRuntime = await runtime.configured_(true);
+      const entitlementsManager = configuredRuntime.entitlementsManager();
+      expect(entitlementsManager.useArticleEndpoint_).to.be.true;
+    });
+
+    it('sets useArticleEndpoint from config', async () => {
+      runtime.configure({useArticleEndpoint: false});
+      runtime.init('pub2');
+      const configuredRuntime = await runtime.configured_(true);
+      const entitlementsManager = configuredRuntime.entitlementsManager();
+      expect(entitlementsManager.useArticleEndpoint_).to.be.false;
+    });
   });
 
   describe('configured', () => {
@@ -405,7 +404,7 @@ describes.realWin('Runtime', (env) => {
       configuredRuntimeMock.expects('start').once();
 
       await runtime.start();
-      expect(configureStub).to.be.calledOnce.calledWith(true);
+      expect(configureStub).to.be.calledWith(true);
     });
 
     it('should delegate "getEntitlements"', async () => {
@@ -470,7 +469,7 @@ describes.realWin('Runtime', (env) => {
         .once();
 
       await runtime.showOffers();
-      expect(configureStub).to.be.calledOnce.calledWith(true);
+      expect(configureStub).to.be.calledWith(true);
     });
 
     it('should delegate "showOffers" with options', async () => {
@@ -478,7 +477,7 @@ describes.realWin('Runtime', (env) => {
       configuredRuntimeMock.expects('showOffers').withExactArgs(options).once();
 
       await runtime.showOffers(options);
-      expect(configureStub).to.be.calledOnce.calledWith(true);
+      expect(configureStub).to.be.calledWith(true);
     });
 
     it('should delegate "showUpdateOffers"', async () => {
@@ -551,7 +550,7 @@ describes.realWin('Runtime', (env) => {
         .once();
 
       await runtime.showContributionOptions();
-      expect(configureStub).to.be.calledOnce.calledWith(true);
+      expect(configureStub).to.be.calledWith(true);
     });
 
     it('should delegate "subscribe"', async () => {
@@ -835,7 +834,7 @@ describes.realWin('Runtime', (env) => {
 
     it('should override fetcher', async () => {
       const ents = {};
-      const otherFetcher = new Fetcher();
+      const otherFetcher = new XhrFetcher(env.win);
       const fetchStub = sandbox
         .stub(otherFetcher, 'fetchCredentialedJson')
         .callsFake(() => Promise.resolve(ents));
@@ -853,7 +852,11 @@ describes.realWin('Runtime', (env) => {
     });
 
     it('should return propensity module', async () => {
-      const propensity = new Propensity(win, configuredRuntime, new Fetcher());
+      const propensity = new Propensity(
+        win,
+        configuredRuntime,
+        new XhrFetcher(env.win)
+      );
       configuredRuntimeMock
         .expects('getPropensityModule')
         .once()
@@ -1040,6 +1043,8 @@ describes.realWin('ConfiguredRuntime', (env) => {
       resolveConfig();
 
       await configPromise;
+      await tick(1);
+
       expect(eventCount).to.equal(2);
     });
 
@@ -1104,6 +1109,7 @@ describes.realWin('ConfiguredRuntime', (env) => {
     let offersApiMock;
     let redirectErrorHandler;
     let eventManagerMock;
+    let clientConfigManagerMock;
 
     beforeEach(() => {
       activityResultCallbacks = {};
@@ -1127,6 +1133,7 @@ describes.realWin('ConfiguredRuntime', (env) => {
       jserrorMock = sandbox.mock(runtime.jserror());
       offersApiMock = sandbox.mock(runtime.offersApi_);
       eventManagerMock = sandbox.mock(runtime.eventManager());
+      clientConfigManagerMock = sandbox.mock(runtime.clientConfigManager());
     });
 
     afterEach(() => {
@@ -1136,6 +1143,7 @@ describes.realWin('ConfiguredRuntime', (env) => {
       entitlementsManagerMock.verify();
       offersApiMock.verify();
       eventManagerMock.verify();
+      clientConfigManagerMock.verify();
       setExperimentsStringForTesting('');
     });
 
@@ -1303,6 +1311,35 @@ describes.realWin('ConfiguredRuntime', (env) => {
           runtime.configure({publisherProvidedId: ''});
         }).to.throw(/publisherProvidedId must be a string, value: /);
       });
+
+      it('throws on unknown enableSwgAnalytics value', () => {
+        const mistake = () => runtime.configure({enableSwgAnalytics: 'true'});
+        expect(mistake).to.throw(
+          'enableSwgAnalytics must be a boolean, type: string'
+        );
+      });
+
+      it('throws on unknown enablePropensity value', () => {
+        const mistake = () => runtime.configure({enablePropensity: 'true'});
+        expect(mistake).to.throw(
+          'enablePropensity must be a boolean, type: string'
+        );
+      });
+
+      it('throws on unknown skipAccountCreationScreen value', () => {
+        const mistake = () =>
+          runtime.configure({skipAccountCreationScreen: 'true'});
+        expect(mistake).to.throw(
+          'skipAccountCreationScreen must be a boolean, type: string'
+        );
+      });
+
+      it('throws on unknown useArticleEndpoint value', () => {
+        const mistake = () => runtime.configure({useArticleEndpoint: 'true'});
+        expect(mistake).to.throw(
+          'useArticleEndpoint must be a boolean, type: string'
+        );
+      });
     });
 
     it('should prefetch loading indicator', () => {
@@ -1381,39 +1418,95 @@ describes.realWin('ConfiguredRuntime', (env) => {
       runtime.closeDialog();
     });
 
-    it('should not start entitlements flow without product', async () => {
-      sandbox.stub(config, 'getProductId').callsFake(() => null);
-      entitlementsManagerMock.expects('getEntitlements').never();
-      const triggerStub = sandbox.stub(
-        runtime.callbacks(),
-        'triggerEntitlementsResponse'
-      );
+    describe('start', () => {
+      it('does not start entitlements flow without product', async () => {
+        sandbox.stub(config, 'getProductId').callsFake(() => null);
+        entitlementsManagerMock.expects('getEntitlements').never();
+        const triggerStub = sandbox.stub(
+          runtime.callbacks(),
+          'triggerEntitlementsResponse'
+        );
 
-      await runtime.start();
-      expect(triggerStub).to.not.be.called;
-    });
+        await runtime.start();
+        expect(triggerStub).to.not.be.called;
+      });
 
-    it('should not start entitlements flow for unlocked', async () => {
-      sandbox.stub(config, 'isLocked').callsFake(() => false);
-      entitlementsManagerMock.expects('getEntitlements').never();
-      const triggerStub = sandbox.stub(
-        runtime.callbacks(),
-        'triggerEntitlementsResponse'
-      );
+      it('does not start entitlements flow for unlocked', async () => {
+        sandbox.stub(config, 'isLocked').callsFake(() => false);
+        entitlementsManagerMock.expects('getEntitlements').never();
+        const triggerStub = sandbox.stub(
+          runtime.callbacks(),
+          'triggerEntitlementsResponse'
+        );
 
-      await runtime.start();
-      expect(triggerStub).to.not.be.called;
-    });
+        await runtime.start();
+        expect(triggerStub).to.not.be.called;
+      });
 
-    it('(optionally) sends publisher provided ID', async () => {
-      entitlementsManagerMock
-        .expects('getEntitlements')
-        .withExactArgs({publisherProvidedId: 'publisherProvidedId'})
-        .resolves({clone: () => null})
-        .once();
+      it('(optionally) sends publisher provided ID', async () => {
+        entitlementsManagerMock
+          .expects('getEntitlements')
+          .withExactArgs({publisherProvidedId: 'publisherProvidedId'})
+          .resolves({clone: () => null})
+          .once();
 
-      await runtime.setPublisherProvidedId('publisherProvidedId');
-      await runtime.getEntitlements({publisherProvidedId: true});
+        await runtime.setPublisherProvidedId('publisherProvidedId');
+        await runtime.getEntitlements({publisherProvidedId: true});
+      });
+
+      it('does not populate client config', async () => {
+        const entitlements = new Entitlements(
+          'service',
+          'raw',
+          [],
+          'product1',
+          () => {}
+        );
+
+        entitlementsManagerMock
+          .expects('getEntitlements')
+          .withExactArgs(undefined)
+          .resolves(entitlements)
+          .once();
+
+        clientConfigManagerMock.expects('fetchClientConfig').never();
+
+        await runtime.start();
+      });
+
+      describe('with POPULATE_CLIENT_CONFIG_CLASSIC flag enabled', () => {
+        it('starts entitlements flow and fetches client config', async () => {
+          setExperiment(
+            win,
+            ExperimentFlags.POPULATE_CLIENT_CONFIG_CLASSIC,
+            true
+          );
+
+          const entitlements = new Entitlements(
+            'service',
+            'raw',
+            [],
+            'product1',
+            () => {}
+          );
+
+          entitlementsManagerMock
+            .expects('getEntitlements')
+            .withExactArgs(undefined)
+            .resolves(entitlements)
+            .once();
+
+          clientConfigManagerMock
+            .expects('fetchClientConfig')
+            .callsFake(async (readyPromise) => {
+              const promiseValue = await readyPromise;
+              expect(promiseValue).to.equal(entitlements);
+            })
+            .once();
+
+          await runtime.start();
+        });
+      });
     });
 
     describe('Entitlements Success', () => {
@@ -1436,14 +1529,14 @@ describes.realWin('ConfiguredRuntime', (env) => {
         await runtime.start();
       });
 
-      it('work for 1 entitlement', async () => {
+      it('works for 1 entitlement', async () => {
         entitlements = [
           new Entitlement('google', ['product1'], '{"productId":"token1"}'),
         ];
         analyticsMock.expects('setSku').withExactArgs('token1').once();
       });
 
-      it('work for multiple entitlement', async () => {
+      it('works for multiple entitlement', async () => {
         entitlements = [
           new Entitlement('google', ['product1'], '{"productId":"token1"}'),
           new Entitlement('google', ['product2'], '{"productId":"token2"}'),
@@ -1455,12 +1548,12 @@ describes.realWin('ConfiguredRuntime', (env) => {
           .once();
       });
 
-      it('work for no entitlements', async () => {
+      it('works for no entitlements', async () => {
         entitlements = [];
         analyticsMock.expects('setSku').never();
       });
 
-      it('kind of work for non-JSON entitlement', async () => {
+      it('kind of works for non-JSON entitlement', async () => {
         entitlements = [new Entitlement('', ['product1'], 'token1')];
         analyticsMock
           .expects('setSku')
@@ -1522,6 +1615,23 @@ describes.realWin('ConfiguredRuntime', (env) => {
       expect(flow.options_.entitlements).to.equal(ents);
     });
 
+    it('should start "completeDeferredAccountCreation" with missing param', async () => {
+      const ents = null;
+      const resp = {};
+      let flow;
+      const startStub = sandbox
+        .stub(DeferredAccountFlow.prototype, 'start')
+        .callsFake(function () {
+          flow = this;
+          return Promise.resolve(resp);
+        });
+
+      const result = await runtime.completeDeferredAccountCreation();
+      expect(startStub).to.be.calledOnce.calledWithExactly();
+      expect(result).to.equal(resp);
+      expect(flow.options_.entitlements).to.equal(ents);
+    });
+
     it('should call "showOffers"', async () => {
       let offersFlow;
       sandbox.stub(OffersFlow.prototype, 'start').callsFake(function () {
@@ -1558,7 +1668,6 @@ a subscription. Use the showUpdateOffers() method instead.'
     });
 
     it('should call "showUpdateOffers"', async () => {
-      setExperiment(win, ExperimentFlags.REPLACE_SUBSCRIPTION, true);
       await expect(runtime.showUpdateOffers()).to.be.rejectedWith(
         'The showUpdateOffers() method cannot be used for \
 new subscribers. Use the showOffers() method instead.'
@@ -1566,7 +1675,6 @@ new subscribers. Use the showOffers() method instead.'
     });
 
     it('should call "showUpdateOffers" with options', async () => {
-      setExperiment(win, ExperimentFlags.REPLACE_SUBSCRIPTION, true);
       let offersFlow;
       sandbox.stub(OffersFlow.prototype, 'start').callsFake(function () {
         offersFlow = this;
@@ -1580,7 +1688,6 @@ new subscribers. Use the showOffers() method instead.'
     });
 
     it('should throw an error if showUpdateOffers is used without an oldSku', async () => {
-      setExperiment(win, ExperimentFlags.REPLACE_SUBSCRIPTION, true);
       await expect(
         runtime.showUpdateOffers({skuId: 'newSku'})
       ).to.be.rejectedWith(
@@ -1717,7 +1824,6 @@ updateSubscription() method'
     });
 
     it('throws if updateSubscription is used to initiate a new subscription', async () => {
-      setExperiment(win, ExperimentFlags.REPLACE_SUBSCRIPTION, true);
       await expect(
         runtime.updateSubscription({skuId: 'newSku'})
       ).to.eventually.be.rejectedWith(
@@ -1731,7 +1837,6 @@ subscribe() method'
       'should start PayStartFlow for replaceSubscription ' +
         '(no proration mode)',
       async () => {
-        setExperiment(win, ExperimentFlags.REPLACE_SUBSCRIPTION, true);
         let flowInstance;
         const startStub = sandbox
           .stub(PayStartFlow.prototype, 'start')
@@ -1750,7 +1855,6 @@ subscribe() method'
     );
 
     it('should start PayStartFlow for replaceSubscription', async () => {
-      setExperiment(win, ExperimentFlags.REPLACE_SUBSCRIPTION, true);
       let flowInstance;
       const startStub = sandbox
         .stub(PayStartFlow.prototype, 'start')
@@ -1787,6 +1891,21 @@ subscribe() method'
         });
 
       await runtime.contribute('sku1');
+      expect(startStub).to.be.calledOnce;
+      expect(flowInstance.subscriptionRequest_.skuId).to.equal('sku1');
+      expect(flowInstance.productType_).to.equal(ProductType.UI_CONTRIBUTION);
+    });
+
+    it('should start PayStartFlow for contribution with object param', async () => {
+      let flowInstance;
+      const startStub = sandbox
+        .stub(PayStartFlow.prototype, 'start')
+        .callsFake(function () {
+          flowInstance = this;
+          return Promise.resolve();
+        });
+
+      await runtime.contribute({skuId: 'sku1'});
       expect(startStub).to.be.calledOnce;
       expect(flowInstance.subscriptionRequest_.skuId).to.equal('sku1');
       expect(flowInstance.productType_).to.equal(ProductType.UI_CONTRIBUTION);
@@ -1993,8 +2112,6 @@ subscribe() method'
     });
 
     it('attaches smart button', async () => {
-      setExperiment(win, ExperimentFlags.SMARTBOX, true);
-
       const stub = sandbox.stub(runtime.buttonApi_, 'attachSmartButton');
 
       const args = [1, 2, 3];

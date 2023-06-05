@@ -16,6 +16,7 @@
 
 import {AnalyticsEvent} from '../../proto/api_messages';
 import {GaaMetering, GaaMeteringRegwall} from '.';
+import {PaywallType} from './constants';
 import {QueryStringUtils} from './utils';
 import {ShowcaseEvent} from '../../api/subscriptions';
 import {tick} from '../../../test/tick';
@@ -199,7 +200,9 @@ describes.realWin('GaaMetering', () => {
       setOnLoginRequest: sandbox.fake(),
       setOnNativeSubscribeRequest: sandbox.fake(),
       setOnEntitlementsResponse: sandbox.fake(),
-      consumeShowcaseEntitlementJwt: sandbox.fake(),
+      consumeShowcaseEntitlementJwt: sandbox.fake((entJwt, callback) => {
+        callback();
+      }),
       setShowcaseEntitlement: sandbox.fake(),
       getEntitlements: sandbox.fake(),
       getEventManager: () => Promise.resolve({logEvent}),
@@ -243,18 +246,6 @@ describes.realWin('GaaMetering', () => {
       });
     }
   }
-
-  describe('constructor', () => {
-    it('sets class variable', () => {
-      const gaaMeteringInstance = new GaaMetering();
-
-      expect(typeof gaaMeteringInstance.userState).to.equal('object');
-
-      expect(typeof gaaMeteringInstance.gaaUserPromiseResolve_).to.equal(
-        'function'
-      );
-    });
-  });
 
   describe('validateParameters', () => {
     beforeEach(() => {
@@ -301,7 +292,28 @@ describes.realWin('GaaMetering', () => {
           handleSwGEntitlement: () => {},
           registerUserPromise: new Promise(() => {}),
           handleLoginPromise: new Promise(() => {}),
-          publisherEntitlementPromise: new Promise(() => {}),
+        })
+      ).to.be.true;
+    });
+
+    it('succeeds for valid params with paywallType', () => {
+      expect(
+        GaaMetering.validateParameters({
+          paywallType: 'SERVER_SIDE',
+          googleApiClientId: GOOGLE_API_CLIENT_ID,
+          allowedReferrers: ['example.com', 'test.com', 'localhost'],
+          userState: {
+            id: 'user1235',
+            registrationTimestamp: 1602763054,
+            subscriptionTimestamp: 1602763094,
+            granted: false,
+          },
+          unlockArticle: () => {},
+          showPaywall: () => {},
+          handleLogin: () => {},
+          handleSwGEntitlement: () => {},
+          registerUserPromise: new Promise(() => {}),
+          handleLoginPromise: new Promise(() => {}),
         })
       ).to.be.true;
     });
@@ -606,6 +618,46 @@ describes.realWin('GaaMetering', () => {
       );
     });
 
+    it('fails for missing userState in server-side paywall scenario when specified by paywallType', () => {
+      expect(
+        GaaMetering.validateParameters({
+          paywallType: 'SERVER_SIDE',
+          googleApiClientId: GOOGLE_API_CLIENT_ID,
+          allowedReferrers: ['example.com', 'test.com', 'localhost'],
+          showPaywall: () => {},
+          handleLogin: () => {},
+          handleSwGEntitlement: () => {},
+          registerUserPromise: new Promise(() => {}),
+          handleLoginPromise: new Promise(() => {}),
+        })
+      ).to.be.false;
+
+      expect(self.console.log).to.have.been.calledWithExactly(
+        '[Subscriptions]',
+        'userState needs to be provided'
+      );
+    });
+
+    it('fails for missing userState in server-side paywall scenario when specified by showcaseEntitlement', () => {
+      expect(
+        GaaMetering.validateParameters({
+          showcaseEntitlement: 'test showcaseEntitlement',
+          googleApiClientId: GOOGLE_API_CLIENT_ID,
+          allowedReferrers: ['example.com', 'test.com', 'localhost'],
+          showPaywall: () => {},
+          handleLogin: () => {},
+          handleSwGEntitlement: () => {},
+          registerUserPromise: new Promise(() => {}),
+          handleLoginPromise: new Promise(() => {}),
+        })
+      ).to.be.false;
+
+      expect(self.console.log).to.have.been.calledWithExactly(
+        '[Subscriptions]',
+        'userState needs to be provided'
+      );
+    });
+
     it('fails for an invalid publisherEntitlementsPromise', () => {
       expect(
         GaaMetering.validateParameters({
@@ -633,6 +685,34 @@ describes.realWin('GaaMetering', () => {
       );
     });
 
+    it('fails for a non-boolean shouldInitializeSwG', () => {
+      expect(
+        GaaMetering.validateParameters({
+          shouldInitializeSwG: 'invalid_value',
+          googleApiClientId: GOOGLE_API_CLIENT_ID,
+          allowedReferrers: ['example.com', 'test.com', 'localhost'],
+          userState: {
+            id: 'user1235',
+            registrationTimestamp: 1602763054,
+            subscriptionTimestamp: 1602763094,
+            granted: false,
+          },
+          unlockArticle: () => {},
+          showPaywall: () => {},
+          handleLogin: () => {},
+          handleSwGEntitlement: () => {},
+          registerUserPromise: new Promise(() => {}),
+          handleLoginPromise: new Promise(() => {}),
+          publisherEntitlementPromise: new Promise(() => {}),
+        })
+      ).to.be.false;
+
+      expect(self.console.log).to.have.been.calledWithExactly(
+        '[Subscriptions]',
+        'shouldInitializeSwG is provided but the value is not a boolean'
+      );
+    });
+
     it('succeeds for free articles where granted is true but grantedReason is not required', () => {
       sandbox.stub(GaaMetering, 'isArticleFreeFromPageConfig_');
       GaaMetering.isArticleFreeFromPageConfig_.returns(true);
@@ -652,6 +732,34 @@ describes.realWin('GaaMetering', () => {
           handleLoginPromise: new Promise(() => {}),
         })
       ).to.be.true;
+    });
+
+    it('fails for invalid paywallType', () => {
+      expect(
+        GaaMetering.validateParameters({
+          paywallType: 'invalid_value',
+          googleApiClientId: GOOGLE_API_CLIENT_ID,
+          allowedReferrers: ['example.com', 'test.com', 'localhost'],
+          userState: {
+            id: 'user1235',
+            registrationTimestamp: 1602763054,
+            subscriptionTimestamp: 1602763094,
+            granted: false,
+          },
+          unlockArticle: () => {},
+          showPaywall: () => {},
+          handleLogin: () => {},
+          handleSwGEntitlement: () => {},
+          registerUserPromise: new Promise(() => {}),
+          handleLoginPromise: new Promise(() => {}),
+          publisherEntitlementPromise: new Promise(() => {}),
+        })
+      ).to.be.false;
+
+      expect(self.console.log).to.have.been.calledWithExactly(
+        '[Subscriptions]',
+        'invalid_value is not a valid paywallType'
+      );
     });
   });
 
@@ -1075,6 +1183,59 @@ describes.realWin('GaaMetering', () => {
       expect(logEvent).not.to.have.been.called;
     });
 
+    it('initializes SwG by default', async () => {
+      QueryStringUtils.getQueryString.returns(
+        '?gaa_at=gaa&gaa_n=n0nc3&gaa_sig=s1gn4tur3&gaa_ts=99999999'
+      );
+      self.document.referrer = 'https://www.google.com';
+      GaaMetering.init({
+        googleApiClientId: GOOGLE_API_CLIENT_ID,
+        allowedReferrers: [
+          'example.com',
+          'test.com',
+          'localhost',
+          'google.com',
+        ],
+        userState: {},
+        unlockArticle: () => {},
+        showPaywall: () => {},
+        handleLogin: () => {},
+        handleSwGEntitlement: () => {},
+        registerUserPromise: new Promise(() => {}),
+        handleLoginPromise: new Promise(() => {}),
+        publisherEntitlementPromise: new Promise(() => {}),
+      });
+
+      expect(subscriptionsMock.init).to.be.called;
+    });
+
+    it('does not initialize SwG when shouldInitializeSwG is false', async () => {
+      QueryStringUtils.getQueryString.returns(
+        '?gaa_at=gaa&gaa_n=n0nc3&gaa_sig=s1gn4tur3&gaa_ts=99999999'
+      );
+      self.document.referrer = 'https://www.google.com';
+      GaaMetering.init({
+        shouldInitializeSwG: false,
+        googleApiClientId: GOOGLE_API_CLIENT_ID,
+        allowedReferrers: [
+          'example.com',
+          'test.com',
+          'localhost',
+          'google.com',
+        ],
+        userState: {},
+        unlockArticle: () => {},
+        showPaywall: () => {},
+        handleLogin: () => {},
+        handleSwGEntitlement: () => {},
+        registerUserPromise: new Promise(() => {}),
+        handleLoginPromise: new Promise(() => {}),
+        publisherEntitlementPromise: new Promise(() => {}),
+      });
+
+      expect(subscriptionsMock.init).to.not.be.called;
+    });
+
     it('succeeds for a subscriber', async () => {
       QueryStringUtils.getQueryString.returns(
         '?gaa_at=gaa&gaa_n=n0nc3&gaa_sig=s1gn4tur3&gaa_ts=99999999'
@@ -1317,6 +1478,8 @@ describes.realWin('GaaMetering', () => {
         '?gaa_at=gaa&gaa_n=n0nc3&gaa_sig=s1gn4tur3&gaa_ts=99999999'
       );
       self.document.referrer = 'https://www.google.com';
+      const unlockArticle = sandbox.fake(() => {});
+
       GaaMetering.init({
         googleApiClientId: GOOGLE_API_CLIENT_ID,
         allowedReferrers: [
@@ -1330,6 +1493,7 @@ describes.realWin('GaaMetering', () => {
           registrationTimestamp: 1602763054,
         },
         showcaseEntitlement: 'test showcaseEntitlement',
+        unlockArticle,
         showPaywall: () => {},
         handleLogin: () => {},
         handleSwGEntitlement: () => {},
@@ -1345,6 +1509,155 @@ describes.realWin('GaaMetering', () => {
 
       expect(subscriptionsMock.consumeShowcaseEntitlementJwt).to.calledWith(
         'test showcaseEntitlement'
+      );
+
+      // No client-side entitlement checks: Google
+      expect(subscriptionsMock.getEntitlements).to.not.be.called;
+
+      // No client-side entitlement checks: publisher
+      expect(self.console.log).to.not.be.calledWith(
+        '[Subscriptions]',
+        'resolving publisherEntitlement'
+      );
+
+      expect(unlockArticle).to.be.called;
+    });
+
+    it('makes unlockArticle optional when showcaseEntitlements is provided', () => {
+      const unlockArticle = undefined;
+
+      removeJsonLdScripts();
+
+      self.document.head.innerHTML = `
+      <script type="application/ld+json">
+        [${ARTICLE_LD_JSON_METADATA}]
+      </script>
+      `;
+
+      QueryStringUtils.getQueryString.returns(
+        '?gaa_at=gaa&gaa_n=n0nc3&gaa_sig=s1gn4tur3&gaa_ts=99999999'
+      );
+      self.document.referrer = 'https://www.google.com';
+
+      GaaMetering.init({
+        googleApiClientId: GOOGLE_API_CLIENT_ID,
+        allowedReferrers: [
+          'example.com',
+          'test.com',
+          'localhost',
+          'google.com',
+        ],
+        userState: {
+          id: 'user1235',
+          registrationTimestamp: 1602763054,
+        },
+        showcaseEntitlement: 'test showcaseEntitlement',
+        unlockArticle,
+        showPaywall: () => {},
+        handleLogin: () => {},
+        handleSwGEntitlement: () => {},
+        registerUserPromise: new Promise(() => {}),
+        handleLoginPromise: new Promise(() => {}),
+        publisherEntitlementPromise: new Promise(() => {}),
+      });
+
+      expect(self.console.log).to.calledWith(
+        '[Subscriptions]',
+        'test showcaseEntitlement'
+      );
+
+      expect(subscriptionsMock.consumeShowcaseEntitlementJwt).to.calledWith(
+        'test showcaseEntitlement'
+      );
+    });
+
+    it('should not check entitlements on client-side for server-side paywall', () => {
+      removeJsonLdScripts();
+
+      self.document.head.innerHTML = `
+      <script type="application/ld+json">
+        [${ARTICLE_LD_JSON_METADATA}]
+      </script>
+      `;
+
+      QueryStringUtils.getQueryString.returns(
+        '?gaa_at=gaa&gaa_n=n0nc3&gaa_sig=s1gn4tur3&gaa_ts=99999999'
+      );
+      self.document.referrer = 'https://www.google.com';
+      const unlockArticle = sandbox.fake(() => {});
+
+      GaaMetering.init({
+        googleApiClientId: GOOGLE_API_CLIENT_ID,
+        allowedReferrers: [
+          'example.com',
+          'test.com',
+          'localhost',
+          'google.com',
+        ],
+        userState: {
+          id: 'user1235',
+          registrationTimestamp: 1602763054,
+          granted: false,
+        },
+        paywallType: 'SERVER_SIDE',
+        unlockArticle,
+        showPaywall: () => {},
+        handleLogin: () => {},
+        handleSwGEntitlement: () => {},
+        registerUserPromise: new Promise(() => {}),
+        handleLoginPromise: new Promise(() => {}),
+      });
+
+      expect(subscriptionsMock.getEntitlements).to.not.be.called;
+
+      expect(self.console.log).to.not.be.calledWith(
+        '[Subscriptions]',
+        'resolving publisherEntitlement'
+      );
+
+      expect(unlockArticle).to.not.be.called;
+    });
+
+    it('should render Google RegWall to anonymous user for server-side paywall', () => {
+      removeJsonLdScripts();
+
+      self.document.head.innerHTML = `
+      <script type="application/ld+json">
+        [${ARTICLE_LD_JSON_METADATA}]
+      </script>
+      `;
+
+      QueryStringUtils.getQueryString.returns(
+        '?gaa_at=gaa&gaa_n=n0nc3&gaa_sig=s1gn4tur3&gaa_ts=99999999'
+      );
+      self.document.referrer = 'https://www.google.com';
+      const unlockArticle = sandbox.fake(() => {});
+
+      GaaMetering.init({
+        googleApiClientId: GOOGLE_API_CLIENT_ID,
+        allowedReferrers: [
+          'example.com',
+          'test.com',
+          'localhost',
+          'google.com',
+        ],
+        userState: {
+          /* anonymous user*/
+        },
+        paywallType: 'SERVER_SIDE',
+        unlockArticle,
+        showPaywall: () => {},
+        handleLogin: () => {},
+        handleSwGEntitlement: () => {},
+        registerUserPromise: new Promise(() => {}),
+        handleLoginPromise: new Promise(() => {}),
+      });
+
+      expect(subscriptionsMock.getEntitlements).to.not.be.called;
+
+      expect(self.console.log).to.be.calledWith(
+        '[Subscriptions]',
+        'show Google Regwall'
       );
     });
 
@@ -1486,39 +1799,39 @@ describes.realWin('GaaMetering', () => {
       callback();
       expect(GaaMetering.handleLoginRequest).to.be.called;
     });
+  });
 
-    it('sets onEntitlementsResponse callback', async () => {
-      sandbox.stub(GaaMetering, 'setEntitlements');
+  describe('determinePaywallType', () => {
+    it('returns CLIENT_SIDE by default when there is no showcaseEntitlement', () => {
+      expect(GaaMetering.determinePaywallType({})).to.be.equal('CLIENT_SIDE');
+    });
 
-      // Successfully init, setting a callback in the process.
-      QueryStringUtils.getQueryString.returns(
-        '?gaa_at=gaa&gaa_n=n0nc3&gaa_sig=s1gn4tur3&gaa_ts=99999999'
-      );
-      self.document.referrer = 'https://www.google.com';
-      GaaMetering.init({
-        googleApiClientId: GOOGLE_API_CLIENT_ID,
-        allowedReferrers: [
-          'example.com',
-          'test.com',
-          'localhost',
-          'google.com',
-        ],
-        userState: {},
-        unlockArticle: () => {},
-        showPaywall: () => {},
-        handleLogin: () => {},
-        handleSwGEntitlement: () => {},
-        registerUserPromise: new Promise(() => {}),
-        handleLoginPromise: new Promise(() => {}),
-        publisherEntitlementPromise: new Promise(() => {}),
-      });
+    it('returns SERVER_SIDE when there is showcaseEntitlement', () => {
+      expect(
+        GaaMetering.determinePaywallType({
+          showcaseEntitlement: 'showcase_entitlement',
+        })
+      ).to.equal(PaywallType.SERVER_SIDE);
+      // showcaseEntitlement should take precedence over paywallType
+      expect(
+        GaaMetering.determinePaywallType({
+          showcaseEntitlement: 'showcase_entitlement',
+          paywallType: 'CLIENT_SIDE',
+        })
+      ).to.equal(PaywallType.SERVER_SIDE);
+    });
 
-      expect(subscriptionsMock.setOnEntitlementsResponse).to.be.called;
-      expect(GaaMetering.setEntitlements).to.not.be.called;
-      const callback =
-        subscriptionsMock.setOnEntitlementsResponse.lastCall.firstArg;
-      callback();
-      expect(GaaMetering.setEntitlements).to.be.called;
+    it('returns paywallType set by publisher when there is no showcaseEntitlement', () => {
+      expect(
+        GaaMetering.determinePaywallType({
+          paywallType: 'SERVER_SIDE',
+        })
+      ).to.equal(PaywallType.SERVER_SIDE);
+      expect(
+        GaaMetering.determinePaywallType({
+          paywallType: 'CLIENT_SIDE',
+        })
+      ).to.equal(PaywallType.CLIENT_SIDE);
     });
   });
 

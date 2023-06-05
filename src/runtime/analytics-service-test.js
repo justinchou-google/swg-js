@@ -25,12 +25,11 @@ import {AnalyticsService} from './analytics-service';
 import {ClientEventManager} from './client-event-manager';
 import {ConfiguredRuntime} from './runtime';
 import {Constants} from '../utils/constants';
-import {ExperimentFlags} from './experiment-flags';
 import {PageConfig} from '../model/page-config';
 import {feUrl} from './services';
 import {getStyle} from '../utils/style';
 import {setExperimentsStringForTesting} from './experiments';
-import {toTimestamp} from '../utils/date-utils';
+import {toDuration, toTimestamp} from '../utils/date-utils';
 
 const URL = 'www.news.com';
 
@@ -87,6 +86,10 @@ describes.realWin('AnalyticsService', (env) => {
     src = '/serviceiframe';
     pageConfig = new PageConfig(productId);
     runtime = new ConfiguredRuntime(env.win, pageConfig);
+    const mockGetCreationTimestamp = sandbox.spy(() => {
+      return 22222;
+    });
+    runtime.creationTimestamp = mockGetCreationTimestamp;
     activityPorts = runtime.activities();
     sandbox.stub(runtime.doc(), 'getRootNode').callsFake(() => {
       return {
@@ -95,7 +98,7 @@ describes.realWin('AnalyticsService', (env) => {
         },
       };
     });
-    analyticsService = new AnalyticsService(runtime, runtime.fetcher_);
+    analyticsService = new AnalyticsService(runtime);
     storageMock = sandbox.mock(runtime.storage());
     activityIframePort = new ActivityIframePort(
       analyticsService.getElement(),
@@ -127,7 +130,7 @@ describes.realWin('AnalyticsService', (env) => {
 
     it('constructs analyticsService', () => {
       const transactionId = analyticsService.getTransactionId();
-      expect(transactionId).to.match(/^.{8}-.{4}-.{4}-.{4}-.{12}$/g);
+      expect(transactionId).to.match(/^.{8}-.{4}-.{4}-.{4}-.{12}\.swg$/g);
 
       const activityIframe = analyticsService.getElement();
       expect(activityIframe.nodeType).to.equal(1);
@@ -222,8 +225,8 @@ describes.realWin('AnalyticsService', (env) => {
       });
 
       // These wait for analytics server to be ready to send data.
-      expect(analyticsService.lastAction_).to.not.be.null;
-      await analyticsService.lastAction_;
+      expect(analyticsService.lastAction).to.not.be.null;
+      await analyticsService.lastAction;
       await activityIframePort.whenReady();
 
       // These ensure the right event was communicated.
@@ -243,8 +246,8 @@ describes.realWin('AnalyticsService', (env) => {
         isFromUserAction: true,
         additionalParameters: {droppedData: true},
       });
-      expect(analyticsService.lastAction_).to.not.be.null;
-      await analyticsService.lastAction_;
+      expect(analyticsService.lastAction).to.not.be.null;
+      await analyticsService.lastAction;
 
       // This ensures communications were successful
       const call2 = activityIframePort.execute.getCall(1);
@@ -275,18 +278,6 @@ describes.realWin('AnalyticsService', (env) => {
       await p;
       await analyticsService.getLoggingPromise();
       expect(loggedErrors.length).to.equal(0);
-    });
-  });
-
-  describe('Update Google Transaction ID Experiment', () => {
-    it('sets SwG transaction ID', async () => {
-      setExperimentsStringForTesting(
-        ExperimentFlags.UPDATE_GOOGLE_TRANSACTION_ID
-      );
-
-      const analyticsService = new AnalyticsService(runtime, runtime.fetcher_);
-      const transactionId = analyticsService.getTransactionId();
-      expect(transactionId).to.match(/^.{8}-.{4}-.{4}-.{4}-.{12}\.swg$/g);
     });
   });
 
@@ -348,8 +339,8 @@ describes.realWin('AnalyticsService', (env) => {
       const loggingResponse = new FinishedLoggingResponse();
       loggingResponse.setComplete(false);
       loggingResponse.setError(err);
-      expect(analyticsService.lastAction_).to.not.be.null;
-      await analyticsService.lastAction_;
+      expect(analyticsService.lastAction).to.not.be.null;
+      await analyticsService.lastAction;
       await activityIframePort.whenReady();
       const p = analyticsService.getLoggingPromise();
       iframeCallback(loggingResponse);
@@ -366,8 +357,8 @@ describes.realWin('AnalyticsService', (env) => {
         isFromUserAction: true,
         additionalParameters: {droppedData: true},
       });
-      expect(analyticsService.lastAction_).to.not.be.null;
-      await analyticsService.lastAction_;
+      expect(analyticsService.lastAction).to.not.be.null;
+      await analyticsService.lastAction;
       const loggingResponse = new FinishedLoggingResponse();
       loggingResponse.setComplete(true);
       // Simulate 1 logging response that occurs before anyone calls
@@ -377,13 +368,41 @@ describes.realWin('AnalyticsService', (env) => {
       const val = await analyticsService.getLoggingPromise();
       expect(val).to.be.true;
     });
+
+    it('reduces timeout after successful event', async () => {
+      sandbox.stub(self, 'setTimeout');
+
+      async function fireEvent() {
+        eventManagerCallback({
+          eventType: AnalyticsEvent.IMPRESSION_PAYWALL,
+          eventOriginator: EventOriginator.SWG_CLIENT,
+          isFromUserAction: true,
+          additionalParameters: {droppedData: true},
+        });
+        await analyticsService.lastAction;
+        const loggingPromise = analyticsService.getLoggingPromise();
+        const loggingResponse = new FinishedLoggingResponse();
+        loggingResponse.setComplete(true);
+        iframeCallback(loggingResponse);
+        await loggingPromise;
+      }
+
+      // Fire first event.
+      await fireEvent();
+      expect(self.setTimeout).to.be.calledWith(sandbox.match.any, 500);
+      self.setTimeout.resetHistory();
+
+      // Fire second event.
+      await fireEvent();
+      expect(self.setTimeout).to.be.calledWith(sandbox.match.any, 200);
+    });
   });
 
   it('should not log the subscription state change event', () => {
-    analyticsService.lastAction_ = null;
+    analyticsService.lastAction = null;
     event.eventType = AnalyticsEvent.EVENT_SUBSCRIPTION_STATE;
     eventManagerCallback(event);
-    expect(analyticsService.lastAction_).to.be.null;
+    expect(analyticsService.lastAction).to.be.null;
     event.eventType = defEventType;
   });
 
@@ -399,8 +418,8 @@ describes.realWin('AnalyticsService', (env) => {
       analyticsService.addLabels(['label']);
       eventManagerCallback(event);
 
-      expect(analyticsService.lastAction_).to.not.be.null;
-      await analyticsService.lastAction_;
+      expect(analyticsService.lastAction).to.not.be.null;
+      await analyticsService.lastAction;
       await activityIframePort.whenReady();
       expect(activityIframePort.execute).to.be.calledOnce;
       const /* {?AnalyticsRequest} */ request =
@@ -416,7 +435,7 @@ describes.realWin('AnalyticsService', (env) => {
       expect(context.getUrl()).to.equal(URL);
       expect(context.getReadyToPay()).to.be.true;
       expect(context.getTransactionId()).to.match(
-        /^.{8}-.{4}-.{4}-.{4}-.{12}$/g
+        /^.{8}-.{4}-.{4}-.{4}-.{12}\.swg$/g
       );
       expect(context.getReferringOrigin()).to.equal(
         'https://scenic-2017.appspot.com'
@@ -429,31 +448,86 @@ describes.realWin('AnalyticsService', (env) => {
 
     it('should set client timestamp in context', async () => {
       sandbox.stub(activityIframePort, 'execute').callsFake(() => {});
-      const mockClientTimeSource = sandbox.spy(() => {
-        return toTimestamp(12345);
-      });
-      analyticsService.getTimestamp_ = mockClientTimeSource;
+
+      event.timestamp = 12345;
 
       eventManagerCallback(event);
 
-      await analyticsService.lastAction_;
+      await analyticsService.lastAction;
       await activityIframePort.whenReady();
       expect(activityIframePort.execute).to.be.calledOnce;
       const /* {?AnalyticsRequest} */ request =
           activityIframePort.execute.getCall(0).args[0];
       expect(request).to.not.be.null;
-      expect(mockClientTimeSource).to.be.calledOnce;
       expect(request.getContext().getClientTimestamp()).to.deep.equal(
-        mockClientTimeSource()
+        toTimestamp(12345)
       );
+    });
+
+    it('should set runtime creation timestamp in context', async () => {
+      sandbox.stub(activityIframePort, 'execute').callsFake(() => {});
+
+      eventManagerCallback(event);
+
+      await analyticsService.lastAction;
+      await activityIframePort.whenReady();
+      expect(activityIframePort.execute).to.be.calledOnce;
+      const /* {?AnalyticsRequest} */ request =
+          activityIframePort.execute.getCall(0).args[0];
+      expect(request).to.not.be.null;
+      expect(request.getContext().getRuntimeCreationTimestamp()).to.deep.equal(
+        toTimestamp(22222)
+      );
+    });
+
+    it('should set load event start delay in context', async () => {
+      sandbox.stub(activityIframePort, 'execute').callsFake(() => {});
+
+      const mockGetLoadEventStartDelay = sandbox.spy(() => {
+        return 33333;
+      });
+      const temp = analyticsService.getLoadEventStartDelay_;
+      analyticsService.getLoadEventStartDelay_ = mockGetLoadEventStartDelay;
+
+      eventManagerCallback(event);
+
+      await analyticsService.lastAction;
+      await activityIframePort.whenReady();
+      expect(activityIframePort.execute).to.be.calledOnce;
+      const /* {?AnalyticsRequest} */ request =
+          activityIframePort.execute.getCall(0).args[0];
+      expect(request).to.not.be.null;
+      expect(request.getContext().getLoadEventStartDelay()).to.deep.equal(
+        toDuration(33333)
+      );
+      analyticsService.getLoadEventStartDelay_ = temp;
+    });
+
+    it('should not set load event start delay in context when missing', async () => {
+      sandbox.stub(activityIframePort, 'execute').callsFake(() => {});
+
+      const mockGetPerformanceEntryList = sandbox.spy(() => {
+        return [];
+      });
+      analyticsService.getPerformanceEntryList_ = mockGetPerformanceEntryList;
+
+      eventManagerCallback(event);
+
+      await analyticsService.lastAction;
+      await activityIframePort.whenReady();
+      expect(activityIframePort.execute).to.be.calledOnce;
+      const /* {?AnalyticsRequest} */ request =
+          activityIframePort.execute.getCall(0).args[0];
+      expect(request).to.not.be.null;
+      expect(!request.getContext().getLoadEventStartDelay());
     });
 
     it('should set context for empty experiments', async () => {
       setExperimentsStringForTesting('');
       sandbox.stub(activityIframePort, 'execute').callsFake(() => {});
       eventManagerCallback(event);
-      expect(analyticsService.lastAction_).to.not.be.null;
-      await analyticsService.lastAction_;
+      expect(analyticsService.lastAction).to.not.be.null;
+      await analyticsService.lastAction;
       await activityIframePort.whenReady();
       expect(activityIframePort.execute).to.be.calledOnce;
       const /* {?AnalyticsRequest} */ request =
@@ -467,8 +541,8 @@ describes.realWin('AnalyticsService', (env) => {
       sandbox.stub(activityIframePort, 'execute').callsFake(() => {});
       await activityIframePort.whenReady();
       eventManagerCallback(event);
-      expect(analyticsService.lastAction_).to.not.be.null;
-      await analyticsService.lastAction_;
+      expect(analyticsService.lastAction).to.not.be.null;
+      await analyticsService.lastAction;
       expect(activityIframePort.execute).to.be.calledOnce;
       const /* {?AnalyticsRequest} */ request =
           activityIframePort.execute.getCall(0).args[0];
@@ -484,8 +558,8 @@ describes.realWin('AnalyticsService', (env) => {
       setExperimentsStringForTesting('E1,E2');
       sandbox.stub(activityIframePort, 'execute').callsFake(() => {});
       eventManagerCallback(event);
-      expect(analyticsService.lastAction_).to.not.be.null;
-      await analyticsService.lastAction_;
+      expect(analyticsService.lastAction).to.not.be.null;
+      await analyticsService.lastAction;
       await activityIframePort.whenReady();
       const /** {?AnalyticsRequest} */ request1 =
           activityIframePort.execute.getCall(0).args[0];
@@ -498,8 +572,8 @@ describes.realWin('AnalyticsService', (env) => {
 
       analyticsService.addLabels(['L3', 'L4']);
       eventManagerCallback(event);
-      expect(analyticsService.lastAction_).to.not.be.null;
-      await analyticsService.lastAction_;
+      expect(analyticsService.lastAction).to.not.be.null;
+      await analyticsService.lastAction;
       const /** {?AnalyticsRequest} */ request2 =
           activityIframePort.execute.getCall(1).args[0];
       expect(request2.getContext().getLabelList()).to.deep.equal([
@@ -530,7 +604,7 @@ describes.realWin('AnalyticsService', (env) => {
       sandbox.stub(activityIframePort, 'execute').callsFake(() => {});
       analyticsService.setUrl('diffUrl');
       eventManagerCallback(event);
-      await analyticsService.lastAction_;
+      await analyticsService.lastAction;
       await activityIframePort.whenReady();
       expect(activityIframePort.execute).to.be.calledOnce;
       const /* {?AnalyticsRequest} */ request =
@@ -552,10 +626,10 @@ describes.realWin('AnalyticsService', (env) => {
      */
     const testOriginator = (originator, shouldLog) => {
       const prevOriginator = event.eventOriginator;
-      analyticsService.lastAction_ = null;
+      analyticsService.lastAction = null;
       event.eventOriginator = originator;
       eventManagerCallback(event);
-      const didLog = analyticsService.lastAction_ !== null;
+      const didLog = analyticsService.lastAction !== null;
       expect(shouldLog).to.equal(didLog);
       event.eventOriginator = prevOriginator;
     };

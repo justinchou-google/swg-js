@@ -69,6 +69,19 @@ describes.realWin('parseUrl', () => {
       origin: 'https://foo.com:123',
     });
   });
+  it('should handle port 0', () => {
+    compareParse('https://foo.com:0/abc?123#foo', {
+      href: 'https://foo.com:0/abc?123#foo',
+      protocol: 'https:',
+      host: 'foo.com:0',
+      hostname: 'foo.com',
+      port: '',
+      pathname: '/abc',
+      search: '?123',
+      hash: '#foo',
+      origin: 'https://foo.com:0',
+    });
+  });
   it('should omit HTTP default port', () => {
     compareParse('http://foo.com:80/abc?123#foo', {
       href: 'http://foo.com/abc?123#foo',
@@ -254,6 +267,9 @@ describe('serializeProtoMessageForUrl', () => {
       ['Timestamp', 12345, 0],
       '1.4',
       ReaderSurfaceType.READER_SURFACE_WORDPRESS,
+      ['Timestamp', 11111, 0],
+      ['Timestamp', 22222, 0],
+      ['Duration', 100, 0],
     ];
     const analyticsEventMetaArray = ['AnalyticsEventMeta', 1, true];
     const eventParamsArray = [
@@ -288,6 +304,9 @@ describe('serializeProtoMessageForUrl', () => {
     deserializedAnalyticsRequestArray.unshift('AnalyticsRequest');
     deserializedAnalyticsRequestArray[1].unshift('AnalyticsContext');
     deserializedAnalyticsRequestArray[1][12].unshift('Timestamp');
+    deserializedAnalyticsRequestArray[1][15].unshift('Timestamp');
+    deserializedAnalyticsRequestArray[1][16].unshift('Timestamp');
+    deserializedAnalyticsRequestArray[1][17].unshift('Duration');
     deserializedAnalyticsRequestArray[3].unshift('AnalyticsEventMeta');
     deserializedAnalyticsRequestArray[4].unshift('EventParams');
     deserializedAnalyticsRequestArray[4][8].unshift('Timestamp');

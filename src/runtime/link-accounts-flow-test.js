@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import {ActivityPort} from '../components/activities';
 import {
   ActivityResult,
   ActivityResultCode,
@@ -24,7 +23,6 @@ import {
   LinkSaveTokenRequest,
   LinkingInfoResponse,
 } from '../proto/api_messages';
-import {ClientConfig} from '../model/client-config';
 import {ConfiguredRuntime} from './runtime';
 import {Constants} from '../utils/constants';
 import {Dialog} from '../components/dialog';
@@ -34,6 +32,7 @@ import {
   LinkSaveFlow,
   LinkbackFlow,
 } from './link-accounts-flow';
+import {MockActivityPort} from '../../test/mock-activity-port';
 import {PageConfig} from '../model/page-config';
 import {createCancelError} from '../utils/errors';
 import {tick} from '../../test/tick';
@@ -76,7 +75,7 @@ describes.realWin('LinkbackFlow', (env) => {
       .expects('open')
       .withExactArgs(
         'swg-link',
-        'https://news.google.com/swg/_/ui/v1/linkbackstart?_=_',
+        'https://news.google.com/swg/ui/v1/linkbackstart?_=_',
         '_blank',
         {
           '_client': 'SwG 0.0.0',
@@ -100,7 +99,7 @@ describes.realWin('LinkbackFlow', (env) => {
       .expects('open')
       .withExactArgs(
         'swg-link',
-        'https://news.google.com/swg/_/ui/v1/linkbackstart?_=_',
+        'https://news.google.com/swg/ui/v1/linkbackstart?_=_',
         '_blank',
         {
           '_client': 'SwG 0.0.0',
@@ -125,7 +124,7 @@ describes.realWin('LinkbackFlow', (env) => {
       .expects('open')
       .withExactArgs(
         'swg-link',
-        'https://news.google.com/swg/_/ui/v1/linkbackstart?_=_',
+        'https://news.google.com/swg/ui/v1/linkbackstart?_=_',
         '_top',
         {
           '_client': 'SwG 0.0.0',
@@ -182,10 +181,6 @@ describes.realWin('LinkCompleteFlow', (env) => {
   });
 
   it('should trigger on link response', async () => {
-    sandbox
-      .stub(runtime.clientConfigManager(), 'getClientConfig')
-      .resolves(new ClientConfig());
-
     dialogManagerMock.expects('popupClosed').once();
     let handler;
     activitiesMock
@@ -211,7 +206,7 @@ describes.realWin('LinkCompleteFlow', (env) => {
       .expects('logSwgEvent')
       .withExactArgs(AnalyticsEvent.EVENT_LINK_ACCOUNT_SUCCESS);
 
-    port = new ActivityPort();
+    port = new MockActivityPort();
     port.onResizeRequest = () => {};
     port.whenReady = () => Promise.resolve();
     const activityResultData = {'index': '1'};
@@ -269,7 +264,7 @@ describes.realWin('LinkCompleteFlow', (env) => {
     expect(triggerLinkCompleteSpy).to.not.be.called;
     expect(triggerFlowCancelSpy).to.not.be.called;
 
-    port = new ActivityPort();
+    port = new MockActivityPort();
     port.onResizeRequest = () => {};
     port.whenReady = () => Promise.resolve();
     port.acceptResult = () =>
@@ -308,7 +303,7 @@ describes.realWin('LinkCompleteFlow', (env) => {
     expect(triggerLinkCompleteSpy).to.not.be.called;
     expect(triggerFlowCancelSpy).to.not.be.called;
 
-    port = new ActivityPort();
+    port = new MockActivityPort();
     port.onResizeRequest = () => {};
     port.whenReady = () => Promise.resolve();
     port.acceptResult = () => Promise.reject(new Error());
@@ -332,21 +327,21 @@ describes.realWin('LinkCompleteFlow', (env) => {
   [
     {
       description: 'should default index to 0',
-      activityResultData: {},
+      activityResultData: null,
       expectedPath:
-        'https://news.google.com/swg/u/0/_/ui/v1/linkconfirmiframe?_=_',
+        'https://news.google.com/swg/u/0/ui/v1/linkconfirmiframe?_=_',
     },
     {
       description: 'should use index in response',
       activityResultData: {index: '1'},
       expectedPath:
-        'https://news.google.com/swg/u/1/_/ui/v1/linkconfirmiframe?_=_',
+        'https://news.google.com/swg/u/1/ui/v1/linkconfirmiframe?_=_',
     },
   ].forEach(({description, activityResultData, expectedPath}) => {
     it(description, async () => {
       dialogManagerMock.expects('popupClosed').once();
       linkCompleteFlow = new LinkCompleteFlow(runtime, activityResultData);
-      port = new ActivityPort();
+      port = new MockActivityPort();
       port.onResizeRequest = () => {};
       port.whenReady = () => Promise.resolve();
 
@@ -411,7 +406,7 @@ describes.realWin('LinkCompleteFlow', (env) => {
 
   it('should trigger events and reset entitlements', async () => {
     dialogManagerMock.expects('popupClosed').once();
-    port = new ActivityPort();
+    port = new MockActivityPort();
     port.onResizeRequest = () => {};
     port.whenReady = () => Promise.resolve();
     let resultResolver;
@@ -423,7 +418,7 @@ describes.realWin('LinkCompleteFlow', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/u/1/_/ui/v1/linkconfirmiframe?_=_',
+        'https://news.google.com/swg/u/1/ui/v1/linkconfirmiframe?_=_',
         {
           '_client': 'SwG 0.0.0',
           'productId': 'pub1:prod1',
@@ -465,92 +460,9 @@ describes.realWin('LinkCompleteFlow', (env) => {
     expect(triggerLinkProgressSpy).to.not.be.called;
   });
 
-  it('should push new entitlements when available', async () => {
-    dialogManagerMock.expects('popupClosed').once();
-    port = new ActivityPort();
-    port.onResizeRequest = () => {};
-    port.whenReady = () => Promise.resolve();
-    let resultResolver;
-    const resultPromise = new Promise((resolve) => {
-      resultResolver = resolve;
-    });
-    port.acceptResult = () => resultPromise;
-    activitiesMock
-      .expects('openIframe')
-      .withExactArgs(
-        sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/u/1/_/ui/v1/linkconfirmiframe?_=_',
-        {
-          '_client': 'SwG 0.0.0',
-          'productId': 'pub1:prod1',
-          'publicationId': 'pub1',
-        }
-      )
-      .resolves(port)
-      .once();
-    entitlementsManagerMock.expects('setToastShown').withExactArgs(true).once();
-    const order = [];
-    entitlementsManagerMock
-      .expects('reset')
-      .withExactArgs(
-        sandbox.match((arg) => {
-          if (order.indexOf('reset') == -1) {
-            order.push('reset');
-          }
-          return arg === true; // Expected positive.
-        })
-      )
-      .once();
-    entitlementsManagerMock
-      .expects('pushNextEntitlements')
-      .withExactArgs(
-        sandbox.match((arg) => {
-          if (order.indexOf('pushNextEntitlements') == -1) {
-            order.push('pushNextEntitlements');
-          }
-          return arg === 'ENTITLEMENTS_JWT';
-        })
-      )
-      .once();
-    entitlementsManagerMock
-      .expects('unblockNextNotification')
-      .withExactArgs()
-      .once();
-    eventManagerMock
-      .expects('logSwgEvent')
-      .withExactArgs(AnalyticsEvent.IMPRESSION_GOOGLE_UPDATED, true);
-    eventManagerMock
-      .expects('logSwgEvent')
-      .withExactArgs(AnalyticsEvent.EVENT_GOOGLE_UPDATED, true);
-    eventManagerMock
-      .expects('logSwgEvent')
-      .withExactArgs(AnalyticsEvent.ACTION_GOOGLE_UPDATED_CLOSE, true);
-
-    await linkCompleteFlow.start();
-    expect(triggerLinkCompleteSpy).to.not.be.called;
-    const result = new ActivityResult(
-      ActivityResultCode.OK,
-      {
-        'success': true,
-        'entitlements': 'ENTITLEMENTS_JWT',
-      },
-      'IFRAME',
-      'https://news.google.com',
-      true,
-      true
-    );
-    resultResolver(result);
-
-    await linkCompleteFlow.whenComplete();
-    expect(triggerLinkCompleteSpy).to.be.calledOnce.calledWithExactly();
-    expect(triggerLinkProgressSpy).to.not.be.called;
-    // Order must be strict: first reset, then pushNextEntitlements.
-    expect(order).to.deep.equal(['reset', 'pushNextEntitlements']);
-  });
-
   it('should reset entitlements for unsuccessful response', async () => {
     dialogManagerMock.expects('popupClosed').once();
-    port = new ActivityPort();
+    port = new MockActivityPort();
     port.onResizeRequest = () => {};
     port.whenReady = () => Promise.resolve();
     let resultResolver;
@@ -597,7 +509,7 @@ describes.realWin('LinkCompleteFlow', (env) => {
       .expects('set')
       .withExactArgs(Constants.USER_TOKEN, 'fake user token', true)
       .exactly(1);
-    port = new ActivityPort();
+    port = new MockActivityPort();
     port.onResizeRequest = () => {};
     port.whenReady = () => Promise.resolve();
     let resultResolver;
@@ -645,7 +557,7 @@ describes.realWin('LinkCompleteFlow', (env) => {
       .expects('set')
       .withExactArgs(Constants.USER_TOKEN, 'fake user token', true)
       .throws(new Error('example error'));
-    port = new ActivityPort();
+    port = new MockActivityPort();
     port.onResizeRequest = () => {};
     port.whenReady = () => Promise.resolve();
     let resultResolver;
@@ -717,7 +629,7 @@ describes.realWin('LinkSaveFlow', (env) => {
       runtime.callbacks(),
       'triggerLinkProgress'
     );
-    port = new ActivityPort();
+    port = new MockActivityPort();
     port.onResizeRequest = () => {};
     messageMap = {};
     sandbox.stub(port, 'on').callsFake((ctor, cb) => {
@@ -748,12 +660,12 @@ describes.realWin('LinkSaveFlow', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/_/ui/v1/linksaveiframe?_=_',
+        'https://news.google.com/swg/ui/v1/linksaveiframe?_=_',
         defaultArguments
       )
       .resolves(port);
     linkSaveFlow.start();
-    await linkSaveFlow.openPromise_;
+    await linkSaveFlow.openPromise;
   });
 
   it('should open dialog in hidden mode', async () => {
@@ -765,7 +677,7 @@ describes.realWin('LinkSaveFlow', (env) => {
       .withExactArgs(/* hidden */ true, {})
       .returns(dialog.open());
     linkSaveFlow.start();
-    await linkSaveFlow.openPromise_;
+    await linkSaveFlow.openPromise;
   });
 
   it('should return false when linking not accepted', async () => {
@@ -853,7 +765,7 @@ describes.realWin('LinkSaveFlow', (env) => {
     activitiesMock.expects('openIframe').resolves(port);
     linkSaveFlow.start();
 
-    await linkSaveFlow.openPromise_;
+    await linkSaveFlow.openPromise;
     const response = new LinkingInfoResponse();
     response.setRequested(true);
     const cb = messageMap[response.label()];
@@ -870,7 +782,7 @@ describes.realWin('LinkSaveFlow', (env) => {
     activitiesMock.expects('openIframe').resolves(port);
     linkSaveFlow.start();
 
-    await linkSaveFlow.openPromise_;
+    await linkSaveFlow.openPromise;
     const response = new LinkingInfoResponse();
     response.setRequested(true);
     const cb = messageMap[response.label()];
@@ -893,7 +805,7 @@ describes.realWin('LinkSaveFlow', (env) => {
     activitiesMock.expects('openIframe').resolves(port);
     linkSaveFlow.start();
 
-    await linkSaveFlow.openPromise_;
+    await linkSaveFlow.openPromise;
     const response = new LinkingInfoResponse();
     response.setRequested(true);
     const cb = messageMap[response.label()];
@@ -914,7 +826,7 @@ describes.realWin('LinkSaveFlow', (env) => {
     activitiesMock.expects('openIframe').resolves(port);
     linkSaveFlow.start();
 
-    await linkSaveFlow.openPromise_;
+    await linkSaveFlow.openPromise;
     const response = new LinkingInfoResponse();
     response.setRequested(true);
     const cb = messageMap[response.label()];
@@ -929,7 +841,7 @@ describes.realWin('LinkSaveFlow', (env) => {
     activitiesMock.expects('openIframe').resolves(port);
     linkSaveFlow.start();
 
-    await linkSaveFlow.openPromise_;
+    await linkSaveFlow.openPromise;
     const response = new LinkingInfoResponse();
     response.setRequested(true);
     const cb = messageMap[response.label()];
@@ -948,7 +860,7 @@ describes.realWin('LinkSaveFlow', (env) => {
     activitiesMock.expects('openIframe').resolves(port);
     linkSaveFlow.start();
 
-    await linkSaveFlow.openPromise_;
+    await linkSaveFlow.openPromise;
     const response = new LinkingInfoResponse();
     response.setRequested(true);
     const cb = messageMap[response.label()];
@@ -969,7 +881,7 @@ describes.realWin('LinkSaveFlow', (env) => {
     activitiesMock.expects('openIframe').resolves(port);
     linkSaveFlow.start();
 
-    await linkSaveFlow.openPromise_;
+    await linkSaveFlow.openPromise;
     const response = new LinkingInfoResponse();
     response.setRequested(false);
     const cb = messageMap[response.label()];
@@ -989,12 +901,12 @@ describes.realWin('LinkSaveFlow', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/_/ui/v1/linksaveiframe?_=_',
+        'https://news.google.com/swg/ui/v1/linksaveiframe?_=_',
         defaultArguments
       )
       .resolves(port);
     const startPromise = linkSaveFlow.start();
-    linkSaveFlow.openPromise_.then(() => {
+    linkSaveFlow.openPromise.then(() => {
       const result = new ActivityResult(
         ActivityResultCode.OK,
         {
@@ -1027,7 +939,7 @@ describes.realWin('LinkSaveFlow', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/_/ui/v1/linksaveiframe?_=_',
+        'https://news.google.com/swg/ui/v1/linksaveiframe?_=_',
         defaultArguments
       )
       .resolves(port);
@@ -1035,7 +947,7 @@ describes.realWin('LinkSaveFlow', (env) => {
       .expects('logSwgEvent')
       .withExactArgs(AnalyticsEvent.ACTION_SAVE_SUBSCR_TO_GOOGLE_CANCEL, true);
     const startPromise = linkSaveFlow.start();
-    linkSaveFlow.openPromise_.then(() => {
+    linkSaveFlow.openPromise.then(() => {
       const result = new ActivityResult(
         ActivityResultCode.OK,
         {
@@ -1066,7 +978,7 @@ describes.realWin('LinkSaveFlow', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/_/ui/v1/linksaveiframe?_=_',
+        'https://news.google.com/swg/ui/v1/linksaveiframe?_=_',
         defaultArguments
       )
       .resolves(port);
@@ -1078,7 +990,7 @@ describes.realWin('LinkSaveFlow', (env) => {
       .expects('logSwgEvent')
       .withExactArgs(AnalyticsEvent.ACTION_SAVE_SUBSCR_TO_GOOGLE_CANCEL, true);
     const startPromise = linkSaveFlow.start();
-    linkSaveFlow.openPromise_.then(() => {
+    linkSaveFlow.openPromise.then(() => {
       const result = new ActivityResult(
         ActivityResultCode.OK,
         {

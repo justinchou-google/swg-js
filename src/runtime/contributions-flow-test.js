@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import {ActivityPort} from '../components/activities';
 import {
   AlreadySubscribedResponse,
   EntitlementsResponse,
@@ -23,6 +22,7 @@ import {
 import {ClientConfig} from '../model/client-config';
 import {ConfiguredRuntime} from './runtime';
 import {ContributionsFlow} from './contributions-flow';
+import {MockActivityPort} from '../../test/mock-activity-port';
 import {PageConfig} from '../model/page-config';
 import {PayStartFlow} from './pay-flow';
 import {ProductType, SubscriptionFlows} from '../api/subscriptions';
@@ -47,7 +47,7 @@ describes.realWin('ContributionsFlow', (env) => {
     callbacksMock = sandbox.mock(runtime.callbacks());
     contributionsFlow = new ContributionsFlow(runtime, {'isClosable': true});
     dialogManagerMock = sandbox.mock(runtime.dialogManager());
-    port = new ActivityPort();
+    port = new MockActivityPort();
     port.onResizeRequest = () => {};
     port.whenReady = () => Promise.resolve();
     port.acceptResult = () => Promise.resolve();
@@ -70,7 +70,7 @@ describes.realWin('ContributionsFlow', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/_/ui/v1/contributionsiframe?_=_',
+        'https://news.google.com/swg/ui/v1/contributionsiframe?_=_',
         {
           _client: 'SwG 0.0.0',
           publicationId: 'pub1',
@@ -96,7 +96,7 @@ describes.realWin('ContributionsFlow', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/_/ui/v1/contributionsiframe?_=_',
+        'https://news.google.com/swg/ui/v1/contributionsiframe?_=_',
         {
           isClosable,
           _client: 'SwG 0.0.0',
@@ -120,7 +120,7 @@ describes.realWin('ContributionsFlow', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/_/ui/v1/contributionsiframe?_=_',
+        'https://news.google.com/swg/ui/v1/contributionsiframe?_=_',
         {
           _client: 'SwG 0.0.0',
           publicationId: 'pub1',
@@ -145,7 +145,7 @@ describes.realWin('ContributionsFlow', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/_/ui/v1/contributionsiframe?_=_',
+        'https://news.google.com/swg/ui/v1/contributionsiframe?_=_',
         {
           _client: 'SwG 0.0.0',
           publicationId: 'pub1',
@@ -182,7 +182,7 @@ describes.realWin('ContributionsFlow', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/_/ui/v1/contributionsiframe?_=_',
+        'https://news.google.com/swg/ui/v1/contributionsiframe?_=_',
         {
           _client: 'SwG 0.0.0',
           publicationId: 'pub1',
@@ -222,7 +222,7 @@ describes.realWin('ContributionsFlow', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/_/ui/v1/contributionoffersiframe?_=_&publicationId=pub1',
+        'https://news.google.com/swg/ui/v1/contributionoffersiframe?_=_&publicationId=pub1',
         {
           _client: 'SwG 0.0.0',
           publicationId: 'pub1',
@@ -250,7 +250,7 @@ describes.realWin('ContributionsFlow', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/_/ui/v1/contributionoffersiframe?_=_&hl=fr-CA&publicationId=pub1',
+        'https://news.google.com/swg/ui/v1/contributionoffersiframe?_=_&hl=fr-CA&publicationId=pub1',
         {
           _client: 'SwG 0.0.0',
           publicationId: 'pub1',

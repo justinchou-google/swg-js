@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-import {ActivityPort} from '../components/activities';
 import {ConfiguredRuntime} from './runtime';
+import {MockActivityPort} from '../../test/mock-activity-port';
 import {PageConfig} from '../model/page-config';
 import {WaitForSubscriptionLookupApi} from './wait-for-subscription-lookup-api';
 
@@ -41,7 +41,7 @@ describes.realWin('WaitForSubscriptionLookupApi', (env) => {
     activitiesMock = sandbox.mock(runtime.activities());
     callbacksMock = sandbox.mock(runtime.callbacks());
     dialogManagerMock = sandbox.mock(runtime.dialogManager());
-    port = new ActivityPort();
+    port = new MockActivityPort();
     port.onResizeRequest = () => {};
     port.whenReady = () => Promise.resolve();
     accountPromise = Promise.resolve(account);
@@ -64,7 +64,7 @@ describes.realWin('WaitForSubscriptionLookupApi', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/_/ui/v1/waitforsubscriptionlookupiframe?_=_',
+        'https://news.google.com/swg/ui/v1/waitforsubscriptionlookupiframe?_=_',
         {
           _client: 'SwG 0.0.0',
           publicationId,
@@ -74,7 +74,7 @@ describes.realWin('WaitForSubscriptionLookupApi', (env) => {
       .resolves(port);
     dialogManagerMock.expects('completeView').once();
     waitingApi.start();
-    await waitingApi.openViewPromise_;
+    await waitingApi.openViewPromise;
   });
 
   it('should return the account on success', async () => {
@@ -93,7 +93,7 @@ describes.realWin('WaitForSubscriptionLookupApi', (env) => {
   });
 
   it('should reject null account promise', async () => {
-    waitingApi = new WaitForSubscriptionLookupApi(runtime);
+    waitingApi = new WaitForSubscriptionLookupApi(runtime, null);
     dialogManagerMock.expects('completeView').once();
     await expect(waitingApi.start()).to.be.rejectedWith(
       'No account promise provided'

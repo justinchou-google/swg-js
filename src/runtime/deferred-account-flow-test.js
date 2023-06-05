@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-import {ActivityPort} from '../components/activities';
 import {AnalyticsEvent} from '../proto/api_messages';
 import {ConfiguredRuntime} from './runtime';
 import {DeferredAccountFlow} from './deferred-account-flow';
 import {Entitlement, Entitlements} from '../api/entitlements';
+import {MockActivityPort} from '../../test/mock-activity-port';
 import {PageConfig} from '../model/page-config';
 import {PayCompleteFlow} from './pay-flow';
 
@@ -64,7 +64,7 @@ describes.realWin('DeferredAccountFlow', (env) => {
       entitlements: ents,
     });
 
-    port = new ActivityPort();
+    port = new MockActivityPort();
     port.onResizeRequest = () => {};
     port.whenReady = () => Promise.resolve();
     resultResolver = null;
@@ -145,7 +145,7 @@ describes.realWin('DeferredAccountFlow', (env) => {
       .expects('openIframe')
       .withExactArgs(
         sandbox.match((arg) => arg.tagName == 'IFRAME'),
-        'https://news.google.com/swg/_/ui/v1/recoveriframe?_=_',
+        'https://news.google.com/swg/ui/v1/recoveriframe?_=_',
         {
           _client: 'SwG 0.0.0',
           publicationId: 'pub1',
@@ -156,7 +156,45 @@ describes.realWin('DeferredAccountFlow', (env) => {
       )
       .resolves(port);
     flow.start();
-    return flow.openPromise_;
+    return flow.openPromise;
+  });
+
+  it('handles empty "raw" param in Entitlements', () => {
+    ents = new Entitlements(
+      'subscribe.google.com',
+      '',
+      [
+        new Entitlement('source2', ['product2', 'product3'], 'token2'),
+        new Entitlement('google', ['product1', 'product2'], 'G_SUB_TOKEN'),
+      ],
+      'pub1:product1',
+      ack
+    );
+    flow = new DeferredAccountFlow(runtime, {
+      entitlements: ents,
+    });
+
+    callbacksMock
+      .expects('triggerFlowStarted')
+      .withExactArgs('completeDeferredAccountCreation')
+      .once();
+    callbacksMock.expects('triggerFlowCanceled').never();
+    activitiesMock
+      .expects('openIframe')
+      .withExactArgs(
+        sandbox.match((arg) => arg.tagName == 'IFRAME'),
+        'https://news.google.com/swg/ui/v1/recoveriframe?_=_',
+        {
+          _client: 'SwG 0.0.0',
+          publicationId: 'pub1',
+          productId: 'pub1:product1',
+          entitlements: null,
+          consent: true,
+        }
+      )
+      .resolves(port);
+    flow.start();
+    return flow.openPromise;
   });
 
   it('should handle cancel', async () => {

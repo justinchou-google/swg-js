@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 import * as runtime from './runtime';
-import {ActivityPort} from '../components/activities';
 import {
   ActivityResult,
   ActivityResultCode,
@@ -22,11 +21,7 @@ import {
 import {AnalyticsEvent, EventOriginator} from '../proto/api_messages';
 import {AudienceActionFlow} from './audience-action-flow';
 import {AudienceActivityEventListener} from './audience-activity-listener';
-import {
-  AutoPromptType,
-  BasicSubscriptions,
-  ClientTheme,
-} from '../api/basic-subscriptions';
+import {AutoPromptType} from '../api/basic-subscriptions';
 import {
   BasicRuntime,
   ConfiguredBasicRuntime,
@@ -34,11 +29,13 @@ import {
   installBasicRuntime,
 } from './basic-runtime';
 import {ClientConfigManager} from './client-config-manager';
+import {ClientTheme} from '../api/subscriptions';
 import {ContributionsFlow} from './contributions-flow';
 import {Entitlements} from '../api/entitlements';
 import {EntitlementsManager} from './entitlements-manager';
 import {ExperimentFlags} from './experiment-flags';
 import {GlobalDoc} from '../model/doc';
+import {MockActivityPort} from '../../test/mock-activity-port';
 import {OffersFlow} from './offers-flow';
 import {PageConfig} from '../model/page-config';
 import {PageConfigResolver} from '../model/page-config-resolver';
@@ -51,6 +48,7 @@ import {
   setExperiment,
   setExperimentsStringForTesting,
 } from './experiments';
+import {tick} from '../../test/tick';
 
 describes.realWin('installBasicRuntime', (env) => {
   let win;
@@ -84,7 +82,7 @@ describes.realWin('installBasicRuntime', (env) => {
     });
 
     // Wait for ready signal.
-    await getBasicRuntime().whenReady();
+    await tick();
     expect(progress).to.equal('1234');
 
     // Few more.
@@ -94,7 +92,7 @@ describes.realWin('installBasicRuntime', (env) => {
     dep(() => {
       progress += '6';
     });
-    await getBasicRuntime().whenReady();
+    await tick();
     expect(progress).to.equal('123456');
   });
 
@@ -103,19 +101,6 @@ describes.realWin('installBasicRuntime', (env) => {
     const runtime1 = getBasicRuntime();
     installBasicRuntime(win);
     expect(getBasicRuntime()).to.equal(runtime1);
-  });
-
-  it('should implement BasicSubscriptions interface', async () => {
-    const promise = new Promise((resolve) => {
-      dep(resolve);
-    });
-    installBasicRuntime(win);
-
-    const basicSubscriptions = await promise;
-    const keys = Object.getOwnPropertyNames(BasicSubscriptions.prototype);
-    for (const key of keys) {
-      expect(basicSubscriptions[key]).to.exist;
-    }
   });
 
   it('handles recursive calls after installation', async () => {
@@ -131,9 +116,7 @@ describes.realWin('installBasicRuntime', (env) => {
       });
     });
 
-    await getBasicRuntime().whenReady();
-    await getBasicRuntime().whenReady();
-    await getBasicRuntime().whenReady();
+    await tick(2);
     expect(progress).to.equal('123');
   });
 
@@ -150,26 +133,8 @@ describes.realWin('installBasicRuntime', (env) => {
     });
     installBasicRuntime(win);
 
-    await getBasicRuntime().whenReady();
-    await getBasicRuntime().whenReady();
-    await getBasicRuntime().whenReady();
+    await tick(2);
     expect(progress).to.equal('123');
-  });
-
-  it('should implement all APIs', async () => {
-    installBasicRuntime(win);
-
-    const basicSubscriptions = await new Promise((resolve) => {
-      dep(resolve);
-    });
-
-    const names = Object.getOwnPropertyNames(BasicSubscriptions.prototype);
-    for (const name of names) {
-      if (name == 'constructor') {
-        continue;
-      }
-      expect(basicSubscriptions).to.have.property(name);
-    }
   });
 });
 
@@ -284,6 +249,8 @@ describes.realWin('BasicRuntime', (env) => {
 
     it('should set publisherProvidedId after initialization', async () => {
       basicRuntime.init({
+        isPartOfType: ['Product'],
+        isPartOfProductId: 'herald-foo-times.com:basic',
         publisherProvidedId: 'publisherProvidedId',
       });
 
@@ -292,6 +259,116 @@ describes.realWin('BasicRuntime', (env) => {
       expect(basicRuntime.config_.publisherProvidedId).to.equal(
         'publisherProvidedId'
       );
+    });
+
+    [
+      {
+        isAccessibleForFree: true,
+        isPartOfProductId: 'publication:openaccess',
+        isAccessibleFromProductId: true,
+      },
+      {
+        isAccessibleForFree: true,
+        isPartOfProductId: 'publication:notopen',
+        isAccessibleFromProductId: true,
+      },
+      {
+        isAccessibleForFree: false,
+        isPartOfProductId: 'publication:openaccess',
+        isAccessibleFromProductId: false,
+      },
+      {
+        isAccessibleForFree: false,
+        isPartOfProductId: 'publication:notopen',
+        isAccessibleFromProductId: false,
+      },
+      {
+        isAccessibleForFree: undefined,
+        isPartOfProductId: 'publication:openaccess',
+        isAccessibleFromProductId: true,
+      },
+      {
+        isAccessibleForFree: undefined,
+        isPartOfProductId: 'publication:notopen',
+        isAccessibleFromProductId: false,
+      },
+    ].forEach(
+      ({isAccessibleForFree, isPartOfProductId, isAccessibleFromProductId}) => {
+        it(`writes page config with isAccessibleForFree=${isAccessibleFromProductId} when isAccessibleForFree=${isAccessibleForFree} and isPartOfProductId=${isPartOfProductId}`, async () => {
+          const writePageConfigStub = sandbox.stub(
+            basicRuntime,
+            'writePageConfig_'
+          );
+
+          basicRuntime.init({
+            type: 'NewsArticle',
+            isAccessibleForFree,
+            isPartOfType: ['Product'],
+            isPartOfProductId,
+          });
+
+          expect(writePageConfigStub).to.have.been.calledWith({
+            type: 'NewsArticle',
+            isAccessibleForFree: isAccessibleFromProductId,
+            isPartOfType: ['Product'],
+            isPartOfProductId,
+          });
+        });
+      }
+    );
+
+    [
+      {
+        isAccessibleForFree: true,
+        isPartOfProductId: 'publication:openaccess',
+        isClosable: true,
+      },
+      {
+        isAccessibleForFree: true,
+        isPartOfProductId: 'publication:notopen',
+        isClosable: true,
+      },
+      {
+        isAccessibleForFree: false,
+        isPartOfProductId: 'publication:openaccess',
+        isClosable: false,
+      },
+      {
+        isAccessibleForFree: false,
+        isPartOfProductId: 'publication:notopen',
+        isClosable: false,
+      },
+      {
+        isAccessibleForFree: undefined,
+        isPartOfProductId: 'publication:openaccess',
+        isClosable: true,
+      },
+      {
+        isAccessibleForFree: undefined,
+        isPartOfProductId: 'publication:notopen',
+        isClosable: undefined,
+      },
+    ].forEach(({isAccessibleForFree, isPartOfProductId, isClosable}) => {
+      it(`shows autoPrompt with isClosable=${isClosable} when isAccessibleForFree=${isAccessibleForFree} and isPartOfProductId=${isPartOfProductId}`, async () => {
+        const setupAndShowAutoPromptStub = sandbox.stub(
+          basicRuntime,
+          'setupAndShowAutoPrompt'
+        );
+
+        basicRuntime.init({
+          type: 'NewsArticle',
+          isAccessibleForFree,
+          isPartOfType: ['Product'],
+          isPartOfProductId,
+          autoPromptType: 'none',
+        });
+
+        expect(setupAndShowAutoPromptStub).to.have.been.calledWith({
+          autoPromptType: 'none',
+          alwaysShow: false,
+          isClosable,
+        });
+      });
     });
   });
 
@@ -396,7 +473,7 @@ describes.realWin('BasicRuntime', (env) => {
 
       expect(openStub).to.be.calledOnceWithExactly(
         'CHECK_ENTITLEMENTS',
-        'https://news.google.com/swg/_/ui/v1/checkentitlements?_=_&publicationId=pub1',
+        'https://news.google.com/swg/ui/v1/checkentitlements?_=_&publicationId=pub1',
         '_blank',
         {publicationId: 'pub1', _client: 'SwG 0.0.0'},
         {'width': 600, 'height': 600}
@@ -419,7 +496,7 @@ describes.realWin('BasicRuntime', (env) => {
       await basicRuntime.processEntitlements();
       expect(handler).to.exist;
 
-      const port = new ActivityPort();
+      const port = new MockActivityPort();
       port.onResizeRequest = () => {};
       port.whenReady = () => Promise.resolve();
       const result = new ActivityResult(
@@ -446,7 +523,7 @@ describes.realWin('BasicRuntime', (env) => {
     });
 
     it('should delegate "setupAndShowAutoPrompt"', async () => {
-      const options = {alwaysShow: true};
+      const options = {alwaysShow: true, isAccessibleForFree: true};
       configuredBasicRuntimeMock
         .expects('setupAndShowAutoPrompt')
         .withExactArgs(options)
@@ -593,8 +670,14 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
     let winMock;
     let audienceActivityEventListener;
     let audienceActivityEventListenerMock;
+    let entitlementsStub;
 
     beforeEach(() => {
+      entitlementsStub = sandbox.stub(
+        EntitlementsManager.prototype,
+        'getEntitlements'
+      );
+      entitlementsStub.resolves(new Entitlements());
       configuredBasicRuntime = new ConfiguredBasicRuntime(win, pageConfig);
       entitlementsManagerMock = sandbox.mock(
         configuredBasicRuntime.configuredClassicRuntime_.entitlementsManager_
@@ -620,6 +703,10 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
       clientConfigManagerMock.verify();
       configuredClassicRuntimeMock.verify();
       winMock.verify();
+    });
+
+    it('should store creationTimestamp', () => {
+      expect(configuredBasicRuntime.creationTimestamp()).to.equal(0);
     });
 
     it('should store and doc and win', () => {
@@ -684,8 +771,7 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
 
     it('should configure subscription auto prompts to show offers for paygated content', async () => {
       sandbox.stub(pageConfig, 'isLocked').returns(true);
-      const entitlements = new Entitlements();
-      entitlementsManagerMock.expects('getEntitlements').resolves(entitlements);
+
       clientConfigManagerMock.expects('getClientConfig').resolves({});
       configuredClassicRuntimeMock
         .expects('showOffers')
@@ -701,13 +787,11 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
 
     it('should configure contribution auto prompts to show contribution options for paygated content', async () => {
       sandbox.stub(pageConfig, 'isLocked').returns(true);
-      const entitlements = new Entitlements();
-      entitlementsManagerMock.expects('getEntitlements').resolves(entitlements);
       clientConfigManagerMock.expects('getClientConfig').resolves({});
       configuredClassicRuntimeMock
         .expects('showContributionOptions')
         .withExactArgs({
-          isClosable: false,
+          isClosable: true,
         })
         .once();
 
@@ -782,7 +866,7 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
     });
 
     it('should handle an EntitlementsResponse with jwt and usertoken', async () => {
-      const port = new ActivityPort();
+      const port = new MockActivityPort();
       port.acceptResult = () => {
         const result = new ActivityResult();
         result.data = {'jwt': 'abc', 'usertoken': 'xyz'};
@@ -819,7 +903,7 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
     });
 
     it('should handle an empty EntitlementsResponse from subscription offers flow', async () => {
-      const port = new ActivityPort();
+      const port = new MockActivityPort();
       port.acceptResult = () => {
         const result = new ActivityResult();
         result.data = {}; // no data
@@ -848,7 +932,7 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
     });
 
     it('should handle an empty EntitlementsResponse from contributions flow', async () => {
-      const port = new ActivityPort();
+      const port = new MockActivityPort();
       port.acceptResult = () => {
         const result = new ActivityResult();
         result.data = {}; // no data
@@ -877,7 +961,7 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
     });
 
     it('should handle an empty EntitlementsResponse from audience action flow', async () => {
-      const port = new ActivityPort();
+      const port = new MockActivityPort();
       port.acceptResult = () => {
         const result = new ActivityResult();
         result.data = {}; // no data
@@ -891,6 +975,7 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
         configuredBasicRuntime,
         {
           action: 'TYPE_REGISTRATION_WALL',
+          configurationId: 'configId',
           fallback: undefined,
           autoPromptType: AutoPromptType.CONTRIBUTION,
         }
@@ -914,7 +999,7 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
     });
 
     it('should handle an empty EntitlementsResponse with no active flow', async () => {
-      const port = new ActivityPort();
+      const port = new MockActivityPort();
       port.acceptResult = () => {
         const result = new ActivityResult();
         result.data = {}; // no data
@@ -941,18 +1026,13 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
       );
     });
 
-    it('passes getEntitlements to fetchClientConfig if useArticleEndpoint is enabled', async () => {
-      setExperiment(win, ExperimentFlags.USE_ARTICLE_ENDPOINT, true);
+    it('passes getEntitlements to fetchClientConfig', async () => {
       const entitlements = new Entitlements(
         'foo.service',
         'RaW',
         [],
         null,
         null
-      );
-      const entitlementsStub = sandbox.stub(
-        EntitlementsManager.prototype,
-        'getEntitlements'
       );
       entitlementsStub.resolves(entitlements);
       const clientConfigManagerStub = sandbox.stub(
@@ -962,8 +1042,6 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
 
       configuredBasicRuntime = new ConfiguredBasicRuntime(win, pageConfig);
 
-      expect(isExperimentOn(win, ExperimentFlags.USE_ARTICLE_ENDPOINT)).to.be
-        .true;
       expect(clientConfigManagerStub).to.be.calledOnce;
       expect(await clientConfigManagerStub.args[0][0]).to.deep.equal(
         entitlements
