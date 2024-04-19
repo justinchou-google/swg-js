@@ -18,6 +18,8 @@
  */
 'use strict';
 
+const {swgPageUrl} = require('../util');
+
 /**
  * @fileoverview Page object for the first article with contribution on scenic.
  */
@@ -37,7 +39,11 @@ const commands = {
 
 module.exports = {
   url: function () {
-    return this.api.launchUrl + '?showContributionOptions';
+    return swgPageUrl(
+      this.api.launchUrl,
+      '/examples/sample-pub/1?showContributionOptions',
+      this.api.globals.swg_experiments
+    );
   },
   commands: [commands],
   elements: {
@@ -46,6 +52,9 @@ module.exports = {
     },
     contributionBtn: {
       selector: '.ContributionButtonText',
+    },
+    header: {
+      selector: '.K2Fgzb',
     },
   },
 };

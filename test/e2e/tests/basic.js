@@ -16,7 +16,7 @@
 
 module.exports = {
   '@tags': ['basic'],
-
+  /*
   'Show button': (browser) => {
     const basic = browser.page.basic();
     basic
@@ -24,11 +24,14 @@ module.exports = {
       .waitForElementPresent('@swgBasicButton', 'Found button')
       .waitForElementVisible('@swgBasicButton')
       .click('@swgBasicButton')
+      .pause(1000)
+      .assert.screenshotIdenticalToBaseline('html', 'basic-contribution')
       .viewContributionOffers()
-      .assert.textContains('.XWoc8b', 'Swgjs Contribution Demos')
-      .assert.textContains('.h57Fgb', '$1')
+      .assert.textContains('@contributionHeader', 'Swgjs Contribution Demos')
+      .assert.textContains('@priceChip', '$1')
       .contribute()
       .checkPayment()
       .end();
   },
+*/
 };

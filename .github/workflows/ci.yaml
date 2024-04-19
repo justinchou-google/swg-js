@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install the right version of Nodejs
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18.x'
 
@@ -31,10 +31,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install the right version of Nodejs
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18.x'
 
@@ -42,16 +42,74 @@ jobs:
         run: npm ci
 
       - name: E2E Tests
-        run: npm run e2e
+        run: . ./build_and_run_e2e.sh
+
+      - name: Upload VRT report
+        uses: actions/upload-artifact@v4
+        with:
+          name: vrt-report
+          path: |
+            .vrt
+            vrt-report
+
+  e2e-with-all-experiments-enabled:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the right version of Nodejs
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: E2E Tests with all experiments enabled
+        run: . ./build_and_run_e2e.sh all_experiments_enabled
+
+      - name: Upload VRT report
+        uses: actions/upload-artifact@v4
+        with:
+          name: vrt-report
+          path: |
+            .vrt
+            vrt-report
+
+  binaries:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the right version of Nodejs
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build binaries
+        run: . ./build_binaries.sh
+
+      - name: Archive binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: |
+            dist/*.js
+            dist/*.js.map
 
   unit:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install the right version of Nodejs
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18.x'
 
@@ -61,6 +119,7 @@ jobs:
       - name: Unit Tests
         run: gulp unit --headless --coverage
 
-      - uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v4
         with:
+          token: 3bd95ad1-098e-45cc-b6c9-4ead17849c96
           files: ./test/coverage/lcov-unit.info

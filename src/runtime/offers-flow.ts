@@ -69,6 +69,8 @@ export class OffersFlow {
   private readonly skus_?: string[];
   private readonly clientConfigPromise_?: Promise<ClientConfig>;
   private readonly activityIframeViewPromise_?: Promise<ActivityIframeView | null>;
+  private readonly shouldAnimateFade_: boolean;
+  private readonly isClosable_?: boolean;
 
   constructor(private readonly deps_: Deps, options?: OffersRequest) {
     this.win_ = deps_.win();
@@ -81,15 +83,20 @@ export class OffersFlow {
 
     this.clientConfigManager_ = deps_.clientConfigManager();
 
+    this.shouldAnimateFade_ =
+      options?.shouldAnimateFade === undefined
+        ? true
+        : options?.shouldAnimateFade;
+
     // Default to hiding close button.
-    const isClosable = options?.isClosable ?? false;
+    this.isClosable_ = options?.isClosable ?? false;
 
     const feArgsObj: OffersRequest = deps_.activities().addDefaultArguments({
       'showNative': deps_.callbacks().hasSubscribeRequestCallback(),
       'productType': ProductType.SUBSCRIPTION,
       'list': options?.list || 'default',
       'skus': options?.skus || null,
-      'isClosable': isClosable,
+      'isClosable': this.isClosable_,
     });
 
     if (options?.oldSku) {
@@ -136,16 +143,14 @@ export class OffersFlow {
   ): Promise<ActivityIframeView | null> {
     const clientConfig = await this.clientConfigPromise_!;
 
-    if (!this.shouldShow_(clientConfig)) {
-      return null;
-    }
-
     return new ActivityIframeView(
       this.win_,
       this.activityPorts_,
       this.getUrl_(clientConfig, this.deps_.pageConfig()),
       args as {[key: string]: string},
-      /* shouldFadeBody */ true
+      /* shouldFadeBody */ true,
+      /* hasLoadingIndicator_ */ false,
+      /* shouldAnimateFade */ this.shouldAnimateFade_
     );
   }
 
@@ -231,14 +236,6 @@ export class OffersFlow {
   }
 
   /**
-   * Returns whether this flow is configured as enabled, not showing
-   * even on explicit start when flag is configured false.
-   */
-  shouldShow_(clientConfig: ClientConfig): boolean {
-    return clientConfig.uiPredicates?.canDisplayAutoPrompt !== false;
-  }
-
-  /**
    * Gets display configuration options for the opened dialog. Uses the
    * responsive desktop design properties if the updated offer flows UI (for
    * SwG Basic) is enabled. Permits override to allow scrolling.
@@ -251,6 +248,7 @@ export class OffersFlow {
       ? {
           desktopConfig: {isCenterPositioned: true, supportsWideScreen: true},
           shouldDisableBodyScrolling: !shouldAllowScroll,
+          closeOnBackgroundClick: this.isClosable_,
         }
       : {};
   }

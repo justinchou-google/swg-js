@@ -112,25 +112,17 @@ describes.realWin('analyticsEventToEntitlementResult', () => {
 });
 
 describes.realWin('analyticsEventToGoogleAnalyticsEvent', () => {
-  it('not allow the same event to be mapped to twice', () => {
+  it('not allow the same event to be mapped twice', () => {
     const mapped = {};
-    for (const event in AnalyticsEvent) {
-      const result = analyticsEventToGoogleAnalyticsEvent(
-        AnalyticsEvent[event]
-      );
-      // Not all analytics events are mapped
-      if (result === undefined) {
-        continue;
-      }
-      expect(typeof result).to.be.equal('object');
-      const resultString = JSON.stringify(result);
-      // Each Google Analytics event should only be mapped to once
-      expect(mapped[resultString]).to.be.undefined;
-      mapped[resultString] = (mapped[resultString] || 0) + 1;
+    for (const key in AnalyticsEventToGoogleAnalyticsEvent) {
+      const keyString = JSON.stringify(key);
+      // Each event should only be mapped once
+      expect(mapped[keyString]).to.be.undefined;
+      mapped[keyString] = (mapped[keyString] || 0) + 1;
     }
   });
 
-  it('uses subscriptionFlow param correclty on "subscription"', () => {
+  it('uses subscriptionFlow param correctly on "subscription"', () => {
     const actual = analyticsEventToGoogleAnalyticsEvent(
       AnalyticsEvent.ACTION_PAYMENT_COMPLETE,
       SubscriptionFlows.SUBSCRIBE
@@ -142,7 +134,7 @@ describes.realWin('analyticsEventToGoogleAnalyticsEvent', () => {
     expect(actual).to.be.equal(expected);
   });
 
-  it('uses subscriptionFlow param correclty on "contribution"', () => {
+  it('uses subscriptionFlow param correctly on "contribution"', () => {
     const actual = analyticsEventToGoogleAnalyticsEvent(
       AnalyticsEvent.ACTION_PAYMENT_COMPLETE,
       SubscriptionFlows.CONTRIBUTE
@@ -173,6 +165,15 @@ describes.realWin('analyticsEventToGoogleAnalyticsEvent', () => {
       AnalyticsEventToGoogleAnalyticsEvent[
         AnalyticsEvent.IMPRESSION_CONTRIBUTION_OFFERS
       ];
+    expect(actual).to.be.equal(expected);
+  });
+
+  it('returns undefined when event is falsy', () => {
+    const actual = analyticsEventToGoogleAnalyticsEvent(
+      null,
+      SubscriptionFlows.CONTRIBUTE
+    );
+    const expected = undefined;
     expect(actual).to.be.equal(expected);
   });
 });

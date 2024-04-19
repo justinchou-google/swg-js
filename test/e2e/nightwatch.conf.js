@@ -19,10 +19,17 @@ module.exports = {
   src_folders: ['test/e2e/tests'],
   globals_path: 'globals.js',
   page_objects_path: 'test/e2e/pages',
+  plugins: ['@nightwatch/vrt'],
+  '@nightwatch/vrt': {
+    baseline_screenshots_path: 'test/e2e/vrt/baseline',
+    latest_screenshots_path: '.vrt/latest',
+    diff_screenshots_path: '.vrt/diff',
+    threshold: 0.005,
+  },
 
   test_settings: {
     default: {
-      launch_url: 'http://localhost:8000/examples/sample-pub/1',
+      launch_url: 'http://localhost:8000',
       custom_commands_path: 'test/e2e/commands',
       skip_testcases_on_fail: false,
 
@@ -34,6 +41,7 @@ module.exports = {
             'disable-gpu',
             'headless',
             'no-sandbox',
+            'window-size=1280,800',
           ],
         },
       },
@@ -47,6 +55,20 @@ module.exports = {
           timeout: 60000,
           retry_attempts: 3,
         },
+      },
+    },
+    all_experiments_enabled: {
+      globals: {
+        swg_experiments: [
+          'logging-audience-activity',
+          'disable-desktop-miniprompt',
+          'background_click_behavior_experiment',
+        ],
+      },
+      '@nightwatch/vrt': {
+        baseline_suffix: '_all_experiments_on',
+        diff_suffix: '_all_experiments_on',
+        latest_suffix: '_all_experiments_on',
       },
     },
   },

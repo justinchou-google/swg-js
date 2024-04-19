@@ -134,11 +134,6 @@ describes.realWin('PayClient', (env) => {
     expect(payClientStubs.create).to.be.calledOnce;
     expect(redirectVerifierHelperStubs.restoreKey).to.be.calledOnce;
     expect(redirectVerifierHelperStubs.prepare).to.be.calledOnce;
-    const el = win.document.head.querySelector(
-      'link[rel="preconnect prefetch"][href*="/pay?"]'
-    );
-    expect(el).to.exist;
-    expect(el.getAttribute('href')).to.equal('PAY_ORIGIN/gp/p/ui/pay?_=_');
   });
 
   it('does not initialize Payments client with bad redirect', () => {
@@ -190,6 +185,7 @@ describes.realWin('PayClient', (env) => {
       'i': {
         'redirectVerifier': redirectVerifierHelperResults.verifier,
         'disableNative': true,
+        'disableNgbf': true,
       },
     });
   });
@@ -210,17 +206,9 @@ describes.realWin('PayClient', (env) => {
       'i': {
         'redirectVerifier': redirectVerifierHelperResults.verifier,
         'disableNative': true,
+        'disableNgbf': true,
       },
     });
-  });
-
-  it('should prefetch payments on start', () => {
-    payClient.start({});
-    const el = win.document.head.querySelector(
-      'link[rel="preconnect prefetch"][href*="/pay?"]'
-    );
-    expect(el).to.exist;
-    expect(el.getAttribute('href')).to.equal('PAY_ORIGIN/gp/p/ui/pay?_=_');
   });
 
   it('should accept a correct payment response', async () => {
@@ -288,55 +276,57 @@ describes.realWin('PayClient', (env) => {
     expect(response).to.deep.equal(INTEGR_DATA_OBJ);
   });
 
-  describe('native support', () => {
-    let top;
+  it('sets Google transaction ID on PaymentsAsyncClient', () => {
+    payClientStubs.create.restore();
+    PaymentsAsyncClient.googleTransactionId_ = '';
 
-    beforeEach(() => {
-      top = win;
-      sandbox.stub(payClient, 'top_').callsFake(() => top);
-    });
-
-    it('should enable native mode', () => {
-      payClient.start({});
-      expect(payClientStubs.loadPaymentData).to.be.calledOnce.calledWith({
-        'i': {
-          'redirectVerifier': redirectVerifierHelperResults.verifier,
-          'disableNative': false,
-        },
-      });
-    });
-
-    it('should disable native mode for iframes', () => {
-      top = {};
-      payClient.start({});
-      expect(payClientStubs.loadPaymentData).to.be.calledOnce.calledWith({
-        'i': {
-          'redirectVerifier': redirectVerifierHelperResults.verifier,
-          'disableNative': true,
-        },
-      });
-    });
-
-    it('should force disable native mode', () => {
-      payClient.start({}, {forceDisableNative: true});
-      expect(payClientStubs.loadPaymentData).to.be.calledOnce.calledWith({
-        'i': {
-          'redirectVerifier': redirectVerifierHelperResults.verifier,
-          'disableNative': true,
-        },
-      });
-    });
-
-    it('sets Google transaction ID on PaymentsAsyncClient', () => {
-      payClientStubs.create.restore();
-      PaymentsAsyncClient.googleTransactionId_ = '';
-
-      payClient.start({});
-      expect(PaymentsAsyncClient.googleTransactionId_).to.equal(
-        GOOGLE_TRANSACTION_ID
-      );
-    });
+    payClient.start({});
+    expect(PaymentsAsyncClient.googleTransactionId_).to.equal(
+      GOOGLE_TRANSACTION_ID
+    );
   });
+
+  // Native support temp disabled due to b/298029927
+  //   describe('native support', () => {
+  //     let top;
+
+  //     beforeEach(() => {
+  //       top = win;
+  //       sandbox.stub(payClient, 'top_').callsFake(() => top);
+  //     });
+
+  //     native removed see b/298029927
+  //     it('should enable native mode', () => {
+  //       payClient.start({});
+  //       expect(payClientStubs.loadPaymentData).to.be.calledOnce.calledWith({
+  //         'i': {
+  //           'redirectVerifier': redirectVerifierHelperResults.verifier,
+  //           'disableNative': false,
+  //         },
+  //       });
+  //     });
+
+  //     it('should disable native mode for iframes', () => {
+  //       top = {};
+  //       payClient.start({});
+  //       expect(payClientStubs.loadPaymentData).to.be.calledOnce.calledWith({
+  //         'i': {
+  //           'redirectVerifier': redirectVerifierHelperResults.verifier,
+  //           'disableNative': true,
+  //         },
+  //       });
+  //     });
+
+  //     it('should force disable native mode', () => {
+  //       payClient.start({}, {forceDisableNative: true});
+  //       expect(payClientStubs.loadPaymentData).to.be.calledOnce.calledWith({
+  //         'i': {
+  //           'redirectVerifier': redirectVerifierHelperResults.verifier,
+  //           'disableNative': true,
+  //         },
+  //       });
+  //     });
+  //   });
 });
 
 describes.sandboxed('RedirectVerifierHelper', () => {

@@ -21,6 +21,7 @@
 
 /* tslint:disable:enforce-name-casing */
 /* tslint:disable:strip-private-property-underscore */
+
 // clang-format off
 
 /** Carries information relating to RRM. */
@@ -93,6 +94,9 @@ export enum AnalyticsEvent {
   IMPRESSION_METER_TOAST_ERROR = 46,
   IMPRESSION_MINI_PROMPT = 47,
   IMPRESSION_MINI_PROMPT_ERROR = 48,
+  IMPRESSION_REWARDED_AD = 49,
+  IMPRESSION_BYOP_NEWSLETTER_OPT_IN = 50,
+  IMPRESSION_REWARDED_AD_ERROR = 51,
   ACTION_SUBSCRIBE = 1000,
   ACTION_PAYMENT_COMPLETE = 1001,
   ACTION_ACCOUNT_CREATED = 1002,
@@ -171,6 +175,15 @@ export enum AnalyticsEvent {
   ACTION_MINI_PROMPT_INTERACTION = 1075,
   ACTION_SURVEY_PREVIOUS_BUTTON_CLICK = 1076,
   ACTION_SURVEY_NEXT_BUTTON_CLICK = 1077,
+  ACTION_REWARDED_AD_VIEW = 1078,
+  ACTION_REWARDED_AD_CLOSE = 1079,
+  ACTION_REWARDED_AD_CLOSE_AD = 1080,
+  ACTION_REWARDED_AD_SIGN_IN = 1081,
+  ACTION_REWARDED_AD_SUPPORT = 1082,
+  ACTION_BACK_TO_HOMEPAGE = 1083,
+  ACTION_BYOP_NEWSLETTER_OPT_IN_CLOSE = 1084,
+  ACTION_BYOP_NEWSLETTER_OPT_IN_SUBMIT = 1085,
+  ACTION_SUBSCRIPTION_LINKING_CLOSE = 1086,
   EVENT_PAYMENT_FAILED = 2000,
   EVENT_REGWALL_OPT_IN_FAILED = 2001,
   EVENT_NEWSLETTER_OPT_IN_FAILED = 2002,
@@ -216,6 +229,24 @@ export enum AnalyticsEvent {
   EVENT_START_API = 3033,
   EVENT_SHOW_OFFERS_API = 3034,
   EVENT_SHOW_CONTRIBUTION_OPTIONS_API = 3035,
+  EVENT_REWARDED_AD_FLOW_INIT = 3048,
+  EVENT_REWARDED_AD_READY = 3036,
+  EVENT_REWARDED_AD_GPT_MISSING_ERROR = 3037,
+  EVENT_REWARDED_AD_CONFIG_ERROR = 3038,
+  EVENT_REWARDED_AD_PAGE_ERROR = 3039,
+  EVENT_REWARDED_AD_GPT_ERROR = 3040,
+  EVENT_REWARDED_AD_GRANTED = 3041,
+  EVENT_REWARDED_AD_NOT_FILLED = 3049,
+  EVENT_GLOBAL_FREQUENCY_CAP_MET = 3042,
+  EVENT_PROMPT_FREQUENCY_CAP_MET = 3043,
+  EVENT_ACTION_IMPRESSIONS_STORAGE_KEY_NOT_FOUND_ERROR = 3044,
+  EVENT_LOCAL_STORAGE_TIMESTAMPS_PARSING_ERROR = 3052,
+  EVENT_FREQUENCY_CAP_CONFIG_NOT_FOUND_ERROR = 3045,
+  EVENT_PROMPT_FREQUENCY_CONFIG_NOT_FOUND = 3053,
+  EVENT_BYOP_NEWSLETTER_OPT_IN_CONFIG_ERROR = 3046,
+  EVENT_BYOP_NEWSLETTER_OPT_IN_CODE_SNIPPET_ERROR = 3047,
+  EVENT_SUBSCRIPTION_PAYMENT_COMPLETE = 3050,
+  EVENT_CONTRIBUTION_PAYMENT_COMPLETE = 3051,
   EVENT_SUBSCRIPTION_STATE = 4000,
 }
 
@@ -390,6 +421,7 @@ export class AnalyticsContext implements Message {
   private pageLoadBeginTimestamp_: Timestamp | null;
   private loadEventStartDelay_: Duration | null;
   private runtimeCreationTimestamp_: Timestamp | null;
+  private isLockedContent_: boolean | null;
 
   constructor(data: unknown[] = [], includesLabel = true) {
     const base = includesLabel ? 1 : 0;
@@ -448,6 +480,9 @@ export class AnalyticsContext implements Message {
       data[16 + base] == null
         ? null
         : new Timestamp(data[16 + base] as unknown[], includesLabel);
+
+    this.isLockedContent_ =
+      data[17 + base] == null ? null : (data[17 + base] as boolean);
   }
 
   getEmbedderOrigin(): string | null {
@@ -586,6 +621,14 @@ export class AnalyticsContext implements Message {
     this.runtimeCreationTimestamp_ = value;
   }
 
+  getIsLockedContent(): boolean | null {
+    return this.isLockedContent_;
+  }
+
+  setIsLockedContent(value: boolean): void {
+    this.isLockedContent_ = value;
+  }
+
   toArray(includeLabel = true): unknown[] {
     const arr: unknown[] = [
       this.embedderOrigin_, // field 1 - embedder_origin
@@ -611,6 +654,7 @@ export class AnalyticsContext implements Message {
       this.runtimeCreationTimestamp_
         ? this.runtimeCreationTimestamp_.toArray(includeLabel)
         : [], // field 17 - runtime_creation_timestamp
+      this.isLockedContent_, // field 18 - is_locked_content
     ];
     if (includeLabel) {
       arr.unshift(this.label());

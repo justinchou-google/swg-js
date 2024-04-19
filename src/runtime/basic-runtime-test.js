@@ -19,7 +19,8 @@ import {
   ActivityResultCode,
 } from 'web-activities/activity-ports';
 import {AnalyticsEvent, EventOriginator} from '../proto/api_messages';
-import {AudienceActionFlow} from './audience-action-flow';
+import {AudienceActionIframeFlow} from './audience-action-flow';
+import {AudienceActionLocalFlow} from './audience-action-local-flow';
 import {AudienceActivityEventListener} from './audience-activity-listener';
 import {AutoPromptType} from '../api/basic-subscriptions';
 import {
@@ -40,6 +41,7 @@ import {OffersFlow} from './offers-flow';
 import {PageConfig} from '../model/page-config';
 import {PageConfigResolver} from '../model/page-config-resolver';
 import {Toast} from '../ui/toast';
+import {UiPredicates} from '../model/client-config';
 import {acceptPortResultData} from './../utils/activity-utils';
 import {analyticsEventToGoogleAnalyticsEvent} from './event-type-mapping';
 import {createElement} from '../utils/dom';
@@ -628,7 +630,7 @@ describes.realWin('BasicRuntime', (env) => {
       configuredClassicRuntimeMock
         .expects('showOffers')
         .withExactArgs({
-          isClosable: false,
+          isClosable: true,
         })
         .once();
       await subscriptionButton.click();
@@ -636,7 +638,7 @@ describes.realWin('BasicRuntime', (env) => {
       configuredClassicRuntimeMock
         .expects('showContributionOptions')
         .withExactArgs({
-          isClosable: false,
+          isClosable: true,
         })
         .once();
       await contributionButton.click();
@@ -772,11 +774,26 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
     it('should configure subscription auto prompts to show offers for paygated content', async () => {
       sandbox.stub(pageConfig, 'isLocked').returns(true);
 
-      clientConfigManagerMock.expects('getClientConfig').resolves({});
+      entitlementsManagerMock
+        .expects('getArticle')
+        .resolves({
+          audienceActions: {
+            actions: [
+              {type: 'TYPE_SUBSCRIPTION', configurationId: 'config_id'},
+            ],
+            engineId: '123',
+          },
+        })
+        .atLeast(1);
+      const uiPredicates = new UiPredicates(/* canDisplayAutoPrompt */ true);
+      clientConfigManagerMock
+        .expects('getClientConfig')
+        .resolves({uiPredicates});
       configuredClassicRuntimeMock
         .expects('showOffers')
         .withExactArgs({
           isClosable: false,
+          shouldAnimateFade: true,
         })
         .once();
 
@@ -787,11 +804,27 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
 
     it('should configure contribution auto prompts to show contribution options for paygated content', async () => {
       sandbox.stub(pageConfig, 'isLocked').returns(true);
-      clientConfigManagerMock.expects('getClientConfig').resolves({});
+
+      entitlementsManagerMock
+        .expects('getArticle')
+        .resolves({
+          audienceActions: {
+            actions: [
+              {type: 'TYPE_CONTRIBUTION', configurationId: 'config_id'},
+            ],
+            engineId: '123',
+          },
+        })
+        .atLeast(1);
+      const uiPredicates = new UiPredicates(/* canDisplayAutoPrompt */ true);
+      clientConfigManagerMock
+        .expects('getClientConfig')
+        .resolves({uiPredicates});
       configuredClassicRuntimeMock
         .expects('showContributionOptions')
         .withExactArgs({
           isClosable: true,
+          shouldAnimateFade: true,
         })
         .once();
 
@@ -902,6 +935,59 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
       storageMock.verify();
     });
 
+    it('should handle an EntitlementsResponse with jwt and usertoken for AudienceActionLocalFlow', async () => {
+      const port = new MockActivityPort();
+      port.acceptResult = () => {
+        const result = new ActivityResult();
+        result.data = {'jwt': 'abc', 'usertoken': 'xyz'};
+        result.origin = 'https://news.google.com';
+        result.originVerified = true;
+        result.secureChannel = true;
+        return Promise.resolve(result);
+      };
+
+      const audienceActionFlow = new AudienceActionLocalFlow(
+        configuredBasicRuntime,
+        {action: 'foo', configurationId: 'configId'}
+      );
+      const audienceActionFlowMock = sandbox.mock(audienceActionFlow);
+      audienceActionFlowMock.expects('close').withExactArgs().once();
+      const autoPromptManagerMock = sandbox.mock(
+        configuredBasicRuntime.autoPromptManager_
+      );
+      autoPromptManagerMock
+        .expects('getLastAudienceActionFlow')
+        .withExactArgs()
+        .returns(audienceActionFlow)
+        .once();
+
+      entitlementsManagerMock
+        .expects('pushNextEntitlements')
+        .withExactArgs('abc')
+        .once();
+
+      const storageMock = sandbox.mock(configuredBasicRuntime.storage());
+      storageMock
+        .expects('set')
+        .withExactArgs('USER_TOKEN', 'xyz', true)
+        .once();
+
+      let toast;
+      const toastOpenStub = sandbox
+        .stub(Toast.prototype, 'open')
+        .callsFake(function () {
+          toast = this;
+        });
+      await configuredBasicRuntime.entitlementsResponseHandler(port);
+
+      expect(toastOpenStub).to.be.called;
+      expect(toast).not.to.be.null;
+      expect(toast.src_).to.contain('flavor=basic');
+      storageMock.verify();
+
+      audienceActionFlowMock.verify();
+    });
+
     it('should handle an empty EntitlementsResponse from subscription offers flow', async () => {
       const port = new MockActivityPort();
       port.acceptResult = () => {
@@ -971,7 +1057,7 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
         return Promise.resolve(result);
       };
 
-      const audienceActionFlow = new AudienceActionFlow(
+      const audienceActionFlow = new AudienceActionIframeFlow(
         configuredBasicRuntime,
         {
           action: 'TYPE_REGISTRATION_WALL',
@@ -1042,7 +1128,7 @@ describes.realWin('BasicConfiguredRuntime', (env) => {
 
       configuredBasicRuntime = new ConfiguredBasicRuntime(win, pageConfig);
 
-      expect(clientConfigManagerStub).to.be.calledOnce;
+      expect(clientConfigManagerStub).to.be.called;
       expect(await clientConfigManagerStub.args[0][0]).to.deep.equal(
         entitlements
       );

@@ -15,8 +15,10 @@
  */
 'use strict';
 
+const {swgPageUrl} = require('../util');
+
 /**
- * @fileoverview Page object for the basic button.
+ * @fileoverview Page object for the basic contribution page.
  */
 const commands = {
   viewContributionOffers: function () {
@@ -33,7 +35,13 @@ const commands = {
 };
 
 module.exports = {
-  url: () => 'http://localhost:8000/demos/public/button-dark.html',
+  url: function () {
+    return swgPageUrl(
+      this.api.launchUrl,
+      '/demos/public/button-dark.html',
+      this.api.globals.swg_experiments
+    );
+  },
   commands: [commands],
   elements: {
     swgBasicButton: {
@@ -41,6 +49,12 @@ module.exports = {
     },
     contributeBtn: {
       selector: '.PNojLb button',
+    },
+    contributionHeader: {
+      selector: '.XWoc8b',
+    },
+    priceChip: {
+      selector: '.h57Fgb',
     },
   },
 };

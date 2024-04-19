@@ -38,6 +38,7 @@ import {
   Subscriptions,
 } from '../api/subscriptions';
 import {AnalyticsService} from './analytics-service';
+import {ArticleExperimentFlags} from './experiment-flags';
 import {ButtonApi} from './button-api';
 import {Callbacks} from './callbacks';
 import {ClientConfigManager} from './client-config-manager';
@@ -55,7 +56,6 @@ import {DialogManager} from '../components/dialog-manager';
 import {Doc as DocInterface, resolveDoc} from '../model/doc';
 import {Entitlements} from '../api/entitlements';
 import {EntitlementsManager} from './entitlements-manager';
-import {ExperimentFlags} from './experiment-flags';
 import {Fetcher as FetcherInterface, XhrFetcher} from './fetcher';
 import {GetEntitlementsParamsExternalDef} from '../api/subscriptions';
 import {GoogleAnalyticsEventListener} from './google-analytics-event-listener';
@@ -99,7 +99,6 @@ import {
 import {debugLog} from '../utils/log';
 import {injectStyleSheet} from '../utils/dom';
 import {isBoolean} from '../utils/types';
-import {isExperimentOn} from './experiments';
 import {isSecure} from '../utils/url';
 import {queryStringHasFreshGaaParams} from './extended-access';
 import {setExperiment} from './experiments';
@@ -297,7 +296,15 @@ export class Runtime implements SubscriptionsInterface {
   }
 
   init(productOrPublicationId: string): void {
-    assert(!this.startedConfiguringRuntime_, 'already configured');
+    if (this.startedConfiguringRuntime_) {
+      // Throw and log an error if the runtime has already been configured.
+      const error = new Error('already configured');
+      this.configured_(false).then((configuredRuntime) => {
+        configuredRuntime.jserror().error(error);
+      });
+      throw error;
+    }
+
     this.productOrPublicationId_ = productOrPublicationId;
 
     // Process the page's config. Then start logging events in the
@@ -474,7 +481,7 @@ export class Runtime implements SubscriptionsInterface {
 
   async saveSubscription(
     saveSubscriptionRequestCallback: SaveSubscriptionRequestCallback
-  ): Promise<void> {
+  ): Promise<boolean> {
     const runtime = await this.configured_(true);
     return runtime.saveSubscription(saveSubscriptionRequestCallback);
   }
@@ -655,8 +662,6 @@ export class ConfiguredRuntime implements Deps, SubscriptionsInterface {
 
     this.storage_ = new Storage(this.win_);
 
-    this.dialogManager_ = new DialogManager(this.doc_);
-
     this.callbacks_ = new Callbacks();
 
     // Start listening to Google Analytics events, if applicable.
@@ -685,6 +690,19 @@ export class ConfiguredRuntime implements Deps, SubscriptionsInterface {
       integr.useArticleEndpoint || false,
       integr.enableDefaultMeteringHandler || false
     );
+
+    const backgroundClickExp = this.entitlementsManager_
+      .getArticle()
+      .then(
+        (article) =>
+          !!this.entitlementsManager_
+            .parseArticleExperimentConfigFlags(article)
+            .includes(
+              ArticleExperimentFlags.BACKGROUND_CLICK_BEHAVIOR_EXPERIMENT
+            )
+      );
+
+    this.dialogManager_ = new DialogManager(this.doc_, backgroundClickExp);
 
     this.clientConfigManager_ = new ClientConfigManager(
       this, // See note about 'this' above
@@ -852,6 +870,12 @@ export class ConfiguredRuntime implements Deps, SubscriptionsInterface {
               'useArticleEndpoint must be a boolean, type: ' + typeof value;
           }
           break;
+        case 'paySwgVersion':
+          if (typeof value !== 'string') {
+            error = 'paySwgVersion must be a string, type: ' + typeof value;
+            break;
+          }
+          break;
         default:
           error = 'Unknown config property: ' + key;
       }
@@ -886,17 +910,7 @@ export class ConfiguredRuntime implements Deps, SubscriptionsInterface {
     if (!this.pageConfig_.getProductId() || !this.pageConfig_.isLocked()) {
       return Promise.resolve();
     }
-    if (
-      isExperimentOn(this.win(), ExperimentFlags.POPULATE_CLIENT_CONFIG_CLASSIC)
-    ) {
-      // Populate the client config. Wait for getEntitlements() since the config is
-      // available in the /article response.
-      this.clientConfigManager().fetchClientConfig(
-        /* readyPromise= */ this.getEntitlements()
-      );
-    } else {
-      this.getEntitlements();
-    }
+    this.getEntitlements();
   }
 
   async getEntitlements(
@@ -910,12 +924,21 @@ export class ConfiguredRuntime implements Deps, SubscriptionsInterface {
     if (params?.publisherProvidedId) {
       params.publisherProvidedId = this.publisherProvidedId_;
     }
-    const entitlements = await this.entitlementsManager_.getEntitlements(
-      params
+    const entitlementsPromise =
+      this.entitlementsManager_.getEntitlements(params);
+
+    // Populate the client config. Wait for the entitlements since the
+    // config is available in the /article response.
+    this.clientConfigManager().fetchClientConfig(
+      /* readyPromise= */ entitlementsPromise
     );
+
+    const entitlements = await entitlementsPromise;
+
     // The swg user token is stored in the entitlements flow, so the analytics service is ready for logging.
     this.analyticsService_.setReadyForLogging();
     this.analyticsService_.start();
+
     // Auto update internal things tracking the user's current SKU.
     if (entitlements) {
       try {
@@ -1012,9 +1035,12 @@ export class ConfiguredRuntime implements Deps, SubscriptionsInterface {
 
   async saveSubscription(
     saveSubscriptionRequestCallback: SaveSubscriptionRequestCallback
-  ): Promise<void> {
+  ): Promise<boolean> {
     await this.documentParsed_;
-    await new LinkSaveFlow(this, saveSubscriptionRequestCallback).start();
+    return await new LinkSaveFlow(
+      this,
+      saveSubscriptionRequestCallback
+    ).start();
   }
 
   async showLoginPrompt(): Promise<void> {

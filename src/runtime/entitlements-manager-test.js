@@ -103,7 +103,7 @@ describes.realWin('EntitlementsManager', (env) => {
       'addListener': (callback) => callback,
     });
     win['addEventListener'] = () => {};
-    pageConfig = new PageConfig('pub1:label1');
+    pageConfig = new PageConfig('pub1:label1', true);
     fetcher = new XhrFetcher(win);
     eventManager = new ClientEventManager(Promise.resolve());
     eventManagerMock = sandbox.mock(eventManager);
@@ -746,6 +746,7 @@ describes.realWin('EntitlementsManager', (env) => {
             products: ['pub1:label1'],
             subscriptionToken: 'token1',
             subscriptionTimestamp: SUBSCRIPTION_TIMESTAMP,
+            readerId: 'readerId',
           },
         });
       const testSubscriptionTokenContents = {
@@ -793,6 +794,7 @@ describes.realWin('EntitlementsManager', (env) => {
           subscriptionToken: 'token1',
           subscriptionTokenContents: testSubscriptionTokenContents,
           subscriptionTimestamp: SUBSCRIPTION_TIMESTAMP,
+          readerId: 'readerId',
         },
       ]);
 
@@ -1134,6 +1136,7 @@ describes.realWin('EntitlementsManager', (env) => {
           subscriptionToken: 'token1',
           subscriptionTokenContents: testSubscriptionTokenContents,
           subscriptionTimestamp: null,
+          readerId: undefined,
         },
       ]);
       expect(ents.enablesThis()).to.be.true;
@@ -1731,7 +1734,7 @@ describes.realWin('EntitlementsManager', (env) => {
       fetcherMock
         .expects('fetch')
         .withExactArgs(
-          `https://news.google.com/swg/_/api/v1/publication/pub1/article?encodedEntitlementsParams=${encodedParams}`,
+          `https://news.google.com/swg/_/api/v1/publication/pub1/article?locked=true&encodedEntitlementsParams=${encodedParams}`,
           {
             method: 'GET',
             headers: {'Accept': 'text/plain, application/json'},
@@ -1760,6 +1763,7 @@ describes.realWin('EntitlementsManager', (env) => {
           subscriptionToken: 'token1',
           subscriptionTokenContents: testSubscriptionTokenContents,
           subscriptionTimestamp: null,
+          readerId: undefined,
         },
       ]);
       expect(ents.raw).to.equal('SIGNED_DATA');
@@ -1985,6 +1989,41 @@ describes.realWin('EntitlementsManager', (env) => {
     });
 
     it('should return correct AvailableInterventions', async () => {
+      manager = new EntitlementsManager(
+        win,
+        pageConfig,
+        fetcher,
+        deps,
+        /* useArticleEndpoint */ true
+      );
+      const article = {
+        audienceActions: {
+          actions: [
+            {
+              type: 'TEST_ACTION',
+              configurationId: 'TEST_CONFIGURATION_ID',
+              preference: 'PREFERENCE_GOOGLE_PROVIDED_PROMPT',
+            },
+          ],
+        },
+      };
+      sandbox.stub(manager, 'getArticle').resolves(article);
+      expect(await manager.getAvailableInterventions()).to.deep.equal(
+        [
+          new AvailableIntervention(
+            {
+              type: 'TEST_ACTION',
+              configurationId: 'TEST_CONFIGURATION_ID',
+              preference: 'PREFERENCE_GOOGLE_PROVIDED_PROMPT',
+            },
+            deps
+          ),
+        ],
+        'getAvailableInterventions should return correct action'
+      );
+    });
+
+    it('should return correct AvailableInterventions without prompt preference', async () => {
       manager = new EntitlementsManager(
         win,
         pageConfig,
@@ -2931,10 +2970,10 @@ describes.realWin('EntitlementsManager', (env) => {
 
       const actionFlowSpy = sandbox.spy(
         audienceActionFlow,
-        'AudienceActionFlow'
+        'AudienceActionIframeFlow'
       );
       const startSpy = sandbox.spy(
-        audienceActionFlow.AudienceActionFlow.prototype,
+        audienceActionFlow.AudienceActionIframeFlow.prototype,
         'start'
       );
 

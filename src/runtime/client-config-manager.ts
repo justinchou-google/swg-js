@@ -33,18 +33,13 @@ import {serviceUrl} from './services';
  */
 export class ClientConfigManager {
   private responsePromise_: Promise<ClientConfig> | null = null;
-  private readonly defaultConfig_: ClientConfig;
 
   constructor(
     private readonly deps_: Deps,
     private readonly publicationId_: string,
     private readonly fetcher_: Fetcher,
     private readonly clientOptions_: ClientOptions = {}
-  ) {
-    this.defaultConfig_ = new ClientConfig({
-      skipAccountCreationScreen: clientOptions_.skipAccountCreationScreen,
-    });
-  }
+  ) {}
 
   /**
    * Fetches the client config from the server.
@@ -63,10 +58,19 @@ export class ClientConfigManager {
 
   /**
    * Gets the client config, if already requested. Otherwise returns a Promise
-   * with an empty ClientConfig.
+   * with a default ClientConfig.
    */
   getClientConfig(): Promise<ClientConfig> {
-    return this.responsePromise_ || Promise.resolve(this.defaultConfig_);
+    return this.responsePromise_ || this.getDefaultConfig_();
+  }
+
+  /** Gets the default config. */
+  private async getDefaultConfig_(): Promise<ClientConfig> {
+    return new ClientConfig({
+      paySwgVersion: this.deps_.config().paySwgVersion,
+      skipAccountCreationScreen: this.clientOptions_.skipAccountCreationScreen,
+      useUpdatedOfferFlows: !!this.deps_.config().paySwgVersion || undefined,
+    });
   }
 
   /**
@@ -165,7 +169,6 @@ export class ClientConfigManager {
    * Parses the fetched config into the ClientConfig container object.
    */
   parseClientConfig_(json: ClientConfigJson): ClientConfig {
-    const paySwgVersion = json['paySwgVersion'];
     const autoPromptConfigJson = json['autoPromptConfig'];
     let autoPromptConfig = undefined;
     if (autoPromptConfigJson) {
@@ -185,6 +188,20 @@ export class ClientConfigManager {
         maxImpressionsResultingHideSeconds:
           autoPromptConfigJson.impressionConfig
             ?.maxImpressionsResultingHideSeconds,
+        globalFrequencyCapDurationSeconds:
+          autoPromptConfigJson.frequencyCapConfig?.globalFrequencyCap
+            ?.frequencyCapDuration?.seconds,
+        globalFrequencyCapDurationNano:
+          autoPromptConfigJson.frequencyCapConfig?.globalFrequencyCap
+            ?.frequencyCapDuration?.nano,
+        promptFrequencyCaps:
+          autoPromptConfigJson.frequencyCapConfig?.promptFrequencyCaps,
+        anyPromptFrequencyCapDurationSeconds:
+          autoPromptConfigJson.frequencyCapConfig?.anyPromptFrequencyCap
+            ?.frequencyCapDuration?.seconds,
+        anyPromptFrequencyCapDurationNano:
+          autoPromptConfigJson.frequencyCapConfig?.anyPromptFrequencyCap
+            ?.frequencyCapDuration?.nano,
       });
     }
 
@@ -207,10 +224,16 @@ export class ClientConfigManager {
       );
     }
 
+    const paySwgVersion =
+      this.deps_.config().paySwgVersion || json['paySwgVersion'];
+
+    const useUpdatedOfferFlows =
+      !!this.deps_.config().paySwgVersion || json['useUpdatedOfferFlows'];
+
     return new ClientConfig({
       autoPromptConfig,
       paySwgVersion,
-      useUpdatedOfferFlows: json['useUpdatedOfferFlows'],
+      useUpdatedOfferFlows,
       skipAccountCreationScreen: this.clientOptions_.skipAccountCreationScreen,
       uiPredicates,
       attributionParams,

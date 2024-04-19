@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
+import {ArticleExperimentFlags} from '../runtime/experiment-flags';
 import {Dialog} from './dialog';
 import {GlobalDoc} from '../model/doc';
 import {getStyle} from '../utils/style';
+import {setExperimentsStringForTesting} from '../runtime/experiments';
 
 const NO_ANIMATE = false;
 const ANIMATE = true;
@@ -30,19 +32,23 @@ describes.realWin('Dialog', (env) => {
   let graypaneStubs;
   let view;
   let element;
+  let lastMessage;
   const documentHeight = 100;
 
   beforeEach(() => {
+    lastMessage = null;
     win = env.win;
     doc = env.win.document;
     globalDoc = new GlobalDoc(win);
 
     element = doc.createElement('div');
+    element.contentWindow = {postMessage: (message) => (lastMessage = message)};
     view = {
       getElement: () => element,
       init: (dialog) => Promise.resolve(dialog),
       resized: () => {},
       shouldFadeBody: () => true,
+      shouldAnimateFade: () => true,
     };
 
     sandbox.stub(self, 'requestAnimationFrame').callsFake((callback) => {
@@ -71,7 +77,7 @@ describes.realWin('Dialog', (env) => {
       expect(getStyle(iframe, 'display')).to.equal('block');
     });
 
-    it('should have created fade background', async () => {
+    it('should have created fade background with animation', async () => {
       expect(graypaneStubs.attach).to.not.be.called;
       const openedDialog = await dialog.open(NO_ANIMATE);
       expect(graypaneStubs.attach).to.be.calledOnce;
@@ -79,6 +85,22 @@ describes.realWin('Dialog', (env) => {
 
       await openedDialog.openView(view);
       expect(graypaneStubs.show).to.be.calledOnce.calledWith(ANIMATE);
+      expect(graypaneStubs.attach).to.be.calledOnce;
+      expect(dialog.graypane_.fadeBackground_.style.zIndex).to.equal(
+        '2147483646'
+      );
+    });
+
+    it('should have created fade background with no animation', async () => {
+      view.shouldAnimateFade = () => false;
+
+      expect(graypaneStubs.attach).to.not.be.called;
+      const openedDialog = await dialog.open(NO_ANIMATE);
+      expect(graypaneStubs.attach).to.be.calledOnce;
+      expect(graypaneStubs.show).to.not.be.called;
+
+      await openedDialog.openView(view);
+      expect(graypaneStubs.show).to.be.calledOnce.calledWith(NO_ANIMATE);
       expect(graypaneStubs.attach).to.be.calledOnce;
       expect(dialog.graypane_.fadeBackground_.style.zIndex).to.equal(
         '2147483646'
@@ -396,6 +418,7 @@ describes.realWin('Dialog', (env) => {
         getElement: () => element,
         resized: () => {},
         shouldFadeBody: () => true,
+        shouldAnimateFade: () => false,
       };
       let styleDuringInit;
       view2.init = () => {
@@ -409,6 +432,200 @@ describes.realWin('Dialog', (env) => {
 
       await openedDialog.openView(view2);
       expect(styleDuringInit).to.equal('display: none !important;');
+    });
+
+    describe('fade background experiment disabled', () => {
+      beforeEach(() => {
+        setExperimentsStringForTesting('');
+      });
+
+      it('should not suppress click events or close window when true', async () => {
+        let wasClicked = false;
+        const clickFun = function () {
+          wasClicked = true;
+        };
+        dialog = new Dialog(
+          globalDoc,
+          {},
+          {},
+          {closeOnBackgroundClick: true, shouldDisableBodyScrolling: true}
+        );
+        const el = dialog.graypane_.getElement();
+        const openedDialog = await dialog.open(NO_ANIMATE);
+        await openedDialog.openView(view);
+        doc.body.addEventListener('click', clickFun);
+        // This class is added when the screen is opened.
+        expect(doc.body).to.have.class('swg-disable-scroll');
+
+        el.click();
+
+        expect(doc.body).to.have.class('swg-disable-scroll');
+        expect(wasClicked).to.be.true;
+      });
+
+      it('should not suppress click events or close window when false', async () => {
+        let wasClicked = false;
+        const clickFun = function () {
+          wasClicked = true;
+        };
+        dialog = new Dialog(
+          globalDoc,
+          {},
+          {},
+          {closeOnBackgroundClick: false, shouldDisableBodyScrolling: true}
+        );
+        const el = dialog.graypane_.getElement();
+        const openedDialog = await dialog.open(NO_ANIMATE);
+        await openedDialog.openView(view);
+        doc.body.addEventListener('click', clickFun);
+        // This class is added when the screen is opened.
+        expect(doc.body).to.have.class('swg-disable-scroll');
+
+        el.click();
+
+        expect(doc.body).to.have.class('swg-disable-scroll');
+        expect(wasClicked).to.be.true;
+      });
+    });
+
+    describe('fade background experiment enabled', () => {
+      beforeEach(() => {
+        setExperimentsStringForTesting(
+          ArticleExperimentFlags.BACKGROUND_CLICK_BEHAVIOR_EXPERIMENT
+        );
+      });
+
+      it('should not suppress click events by default', async () => {
+        let wasClicked = false;
+        const clickFun = function () {
+          wasClicked = true;
+        };
+        dialog = new Dialog(
+          globalDoc,
+          undefined,
+          undefined,
+          undefined,
+          Promise.resolve(true)
+        );
+        const el = dialog.graypane_.getElement();
+        const openedDialog = await dialog.open(NO_ANIMATE);
+        await openedDialog.openView(view);
+        doc.body.addEventListener('click', clickFun);
+        el.click();
+
+        expect(wasClicked).to.be.true;
+      });
+
+      it('should suppress event bubbling if not closable', async () => {
+        let wasClicked = false;
+        const clickFun = function () {
+          wasClicked = true;
+        };
+        dialog = new Dialog(
+          globalDoc,
+          {},
+          {},
+          {closeOnBackgroundClick: false},
+          Promise.resolve(true)
+        );
+        const el = dialog.graypane_.getElement();
+        const openedDialog = await dialog.open(NO_ANIMATE);
+        await openedDialog.openView(view);
+        doc.body.addEventListener('click', clickFun);
+        el.click();
+
+        expect(wasClicked).to.be.false;
+      });
+
+      it('should suppress event bubbling if closable', async () => {
+        let wasClicked = false;
+        const clickFun = function () {
+          wasClicked = true;
+        };
+        dialog = new Dialog(
+          globalDoc,
+
+          {},
+          {},
+          {closeOnBackgroundClick: true},
+          Promise.resolve(true)
+        );
+        const el = dialog.graypane_.getElement();
+        const openedDialog = await dialog.open(NO_ANIMATE);
+        await openedDialog.openView(view);
+        doc.body.addEventListener('click', clickFun);
+        el.click();
+
+        expect(wasClicked).to.be.false;
+      });
+
+      it('respects not closable', async () => {
+        dialog = new Dialog(
+          globalDoc,
+          {},
+          {},
+          {closeOnBackgroundClick: false, shouldDisableBodyScrolling: true},
+          Promise.resolve(true)
+        );
+        const el = dialog.graypane_.getElement();
+        const openedDialog = await dialog.open(NO_ANIMATE);
+        await openedDialog.openView(view);
+        // This class is added when the screen is opened.
+        expect(lastMessage).to.equal(null);
+
+        el.click();
+
+        expect(lastMessage).to.equal(null);
+      });
+
+      it('respects closable', async () => {
+        dialog = new Dialog(
+          globalDoc,
+          {},
+          {},
+          {closeOnBackgroundClick: true, shouldDisableBodyScrolling: true},
+          Promise.resolve(true)
+        );
+
+        const el = dialog.graypane_.getElement();
+        const openedDialog = await dialog.open(NO_ANIMATE);
+        await openedDialog.openView(view);
+
+        expect(lastMessage).to.equal(null);
+
+        await el.click();
+
+        //swg-js is expected to post a message of 'close' to the iframe's
+        //contentWindow. Boq listens for the message and then clicks the close
+        //button so it can handle logging.
+        expect(lastMessage).to.equal('close');
+      });
+
+      it('respects closable with domain', async () => {
+        element.src = 'http://www.test.com';
+        dialog = new Dialog(
+          globalDoc,
+          {},
+          {},
+          {closeOnBackgroundClick: true, shouldDisableBodyScrolling: true},
+          Promise.resolve(true)
+        );
+
+        const el = dialog.graypane_.getElement();
+        const openedDialog = await dialog.open(NO_ANIMATE);
+        await openedDialog.openView(view);
+
+        expect(lastMessage).to.equal(null);
+
+        await el.click();
+
+        //swg-js is expected to post a message of 'close' to the iframe's
+        //contentWindow. Boq listens for the message and then clicks the close
+        //button so it can handle logging.
+        expect(lastMessage).to.equal('close');
+
+        element.src = null;
+      });
     });
 
     describe('body scrolling disabled', () => {

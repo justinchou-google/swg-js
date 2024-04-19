@@ -207,11 +207,11 @@ export interface Subscriptions {
 
   /**
    * Starts the save subscriptions flow.
-   * @return a promise indicating flow is started
+   * @return a promise indicating whether the flow completed successfully.
    */
   saveSubscription(
     requestCallback: SaveSubscriptionRequestCallback
-  ): Promise<void>;
+  ): Promise<boolean>;
 
   /**
    * Starts the subscription linking flow.
@@ -372,6 +372,7 @@ export interface Config {
   enablePropensity?: boolean;
   publisherProvidedId?: string;
   useArticleEndpoint?: boolean;
+  paySwgVersion?: string;
 }
 
 /**
@@ -512,6 +513,13 @@ export interface OffersRequest {
    * upgrade or downgrade their current subscription.
    */
   oldSku?: string;
+
+  /**
+   * Optional. Disables the fade in animation if set to false. Defaults to true
+   * if unset.
+   * TODO: b/304803271 - remove this field from the api.
+   */
+  shouldAnimateFade?: boolean;
 }
 
 export interface LoginRequest {

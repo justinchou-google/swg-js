@@ -44,7 +44,9 @@ export class ContributionsFlow {
   private readonly clientConfigManager_: ClientConfigManager;
   private readonly activityPorts_: ActivityPorts;
   private readonly dialogManager_: DialogManager;
-  private readonly activityIframeViewPromise_: Promise<ActivityIframeView | null>;
+  private readonly activityIframeViewPromise_: Promise<ActivityIframeView>;
+  private readonly shouldAnimateFade_: boolean;
+  private isClosable_: boolean;
 
   constructor(
     private readonly deps_: Deps,
@@ -58,17 +60,18 @@ export class ContributionsFlow {
 
     this.dialogManager_ = deps_.dialogManager();
 
+    // Default to showing close button.
+    this.isClosable_ = this.options_?.isClosable ?? true;
     this.activityIframeViewPromise_ = this.getActivityIframeView_();
+
+    this.shouldAnimateFade_ =
+      this.options_?.shouldAnimateFade === undefined
+        ? true
+        : this.options_?.shouldAnimateFade;
   }
 
-  private async getActivityIframeView_(): Promise<ActivityIframeView | null> {
-    // Default to showing close button.
-    const isClosable = this.options_?.isClosable ?? true;
-
+  private async getActivityIframeView_(): Promise<ActivityIframeView> {
     const clientConfig = await this.clientConfigManager_.getClientConfig();
-    if (!this.shouldShow_(clientConfig)) {
-      return null;
-    }
 
     return new ActivityIframeView(
       this.win_,
@@ -80,10 +83,12 @@ export class ContributionsFlow {
         'productType': ProductType.UI_CONTRIBUTION,
         'list': this.options_?.list || 'default',
         'skus': this.options_?.skus || null,
-        'isClosable': isClosable,
+        'isClosable': this.isClosable_,
         'supportsEventManager': true,
       }),
-      /* shouldFadeBody */ true
+      /* shouldFadeBody */ true,
+      /* hasLoadingIndicator_ */ false,
+      /* shouldAnimateFade */ this.shouldAnimateFade_
     );
   }
 
@@ -118,9 +123,6 @@ export class ContributionsFlow {
    */
   async start(): Promise<void> {
     const activityIframeView = await this.activityIframeViewPromise_;
-    if (!activityIframeView) {
-      return Promise.resolve();
-    }
 
     // Start/cancel events.
     this.deps_
@@ -158,16 +160,11 @@ export class ContributionsFlow {
     shouldAllowScroll: boolean
   ): DialogConfig {
     return clientConfig.useUpdatedOfferFlows && !shouldAllowScroll
-      ? {shouldDisableBodyScrolling: true}
+      ? {
+          shouldDisableBodyScrolling: true,
+          closeOnBackgroundClick: this.isClosable_,
+        }
       : {};
-  }
-
-  /**
-   * Returns whether this flow is configured as enabled, not showing
-   * even on explicit start when flag is configured false.
-   */
-  private shouldShow_(clientConfig: ClientConfig): boolean {
-    return clientConfig.uiPredicates?.canDisplayAutoPrompt !== false;
   }
 
   /**

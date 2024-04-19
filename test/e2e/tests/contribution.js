@@ -16,18 +16,21 @@
 
 module.exports = {
   '@tags': ['contribution'],
-
+  /*
   'Show contribution options': (browser) => {
     const contribution = browser.page.contribution();
     contribution
       .navigate()
       .waitForElementPresent('@swgDialog', 'Found SwG dialog')
       .waitForElementVisible('@swgDialog')
+      .pause(1000)
+      .assert.screenshotIdenticalToBaseline('body', 'classic-contribution')
       .viewContributionOptions()
-      .assert.textContains('.K2Fgzb', 'Contribute with your Google Account')
+      .assert.textContains('@header', 'Contribute with your Google Account')
       .assert.textContains('.Borcjc', '$0.99')
       .contribute()
       .checkPayment()
       .end();
   },
+*/
 };

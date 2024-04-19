@@ -290,6 +290,17 @@ describes.realWin('Runtime', (env) => {
       }).to.throw(/already configured/);
     });
 
+    it('should log init error to server', async () => {
+      const configuredRuntime = await runtime.configured_(true);
+      const jserror = sandbox.mock(configuredRuntime.jserror());
+      jserror.expects('error').once();
+      expect(() => {
+        runtime.init('pub2');
+      }).to.throw(/already configured/);
+      await runtime.configured_(false);
+      jserror.verify();
+    });
+
     it('should fail when config lookup fails', async () => {
       configPromise = Promise.reject('config broken');
 
@@ -368,6 +379,16 @@ describes.realWin('Runtime', (env) => {
       const configuredRuntime = await runtime.configured_(true);
       const entitlementsManager = configuredRuntime.entitlementsManager();
       expect(entitlementsManager.useArticleEndpoint_).to.be.false;
+    });
+
+    it('sets paySwgVersion from config', async () => {
+      runtime.configure({paySwgVersion: '123'});
+      runtime.init('pub2');
+      const configuredRuntime = await runtime.configured_(true);
+      const clientConfig = await configuredRuntime
+        .clientConfigManager()
+        .getClientConfig();
+      expect(clientConfig.paySwgVersion).to.eq('123');
     });
   });
 
@@ -823,27 +844,30 @@ describes.realWin('Runtime', (env) => {
     });
 
     it('should use default fetcher', async () => {
-      const ents = {};
+      const article = {entitlements: {}};
       const xhrFetchStub = sandbox
         .stub(XhrFetcher.prototype, 'fetchCredentialedJson')
-        .callsFake(() => Promise.resolve(ents));
-
+        .callsFake(() => Promise.resolve(article));
+      runtime = new ConfiguredRuntime(new GlobalDoc(win), config, {
+        useArticleEndpoint: true,
+      });
       await runtime.getEntitlements();
       expect(xhrFetchStub).to.be.calledOnce;
     });
 
     it('should override fetcher', async () => {
-      const ents = {};
+      const article = {entitlements: {}};
       const otherFetcher = new XhrFetcher(env.win);
       const fetchStub = sandbox
         .stub(otherFetcher, 'fetchCredentialedJson')
-        .callsFake(() => Promise.resolve(ents));
+        .callsFake(() => Promise.resolve(article));
       const xhrFetchStub = sandbox.stub(
         XhrFetcher.prototype,
         'fetchCredentialedJson'
       );
       runtime = new ConfiguredRuntime(new GlobalDoc(win), config, {
         fetcher: otherFetcher,
+        useArticleEndpoint: true,
       });
 
       await runtime.getEntitlements();
@@ -1340,6 +1364,13 @@ describes.realWin('ConfiguredRuntime', (env) => {
           'useArticleEndpoint must be a boolean, type: string'
         );
       });
+
+      it('throws on unknown paySwgVersion value', () => {
+        const mistake = () => runtime.configure({paySwgVersion: 123});
+        expect(mistake).to.throw(
+          'paySwgVersion must be a string, type: number'
+        );
+      });
     });
 
     it('should prefetch loading indicator', () => {
@@ -1454,27 +1485,7 @@ describes.realWin('ConfiguredRuntime', (env) => {
         await runtime.getEntitlements({publisherProvidedId: true});
       });
 
-      it('does not populate client config', async () => {
-        const entitlements = new Entitlements(
-          'service',
-          'raw',
-          [],
-          'product1',
-          () => {}
-        );
-
-        entitlementsManagerMock
-          .expects('getEntitlements')
-          .withExactArgs(undefined)
-          .resolves(entitlements)
-          .once();
-
-        clientConfigManagerMock.expects('fetchClientConfig').never();
-
-        await runtime.start();
-      });
-
-      describe('with POPULATE_CLIENT_CONFIG_CLASSIC flag enabled', () => {
+      describe('getEntitlements', () => {
         it('starts entitlements flow and fetches client config', async () => {
           setExperiment(
             win,
@@ -1504,7 +1515,7 @@ describes.realWin('ConfiguredRuntime', (env) => {
             })
             .once();
 
-          await runtime.start();
+          await runtime.getEntitlements();
         });
       });
     });
@@ -1911,36 +1922,47 @@ subscribe() method'
       expect(flowInstance.productType_).to.equal(ProductType.UI_CONTRIBUTION);
     });
 
-    it('should start saveSubscriptionFlow with callback for token', async () => {
-      let linkSaveFlow;
-      const newPromise = new Promise(() => {});
-      sandbox.stub(LinkSaveFlow.prototype, 'start').callsFake(function () {
-        linkSaveFlow = this;
-        return newPromise;
+    describe('saveSubscription', () => {
+      it('starts LinkSaveFlow with callback for token', async () => {
+        let linkSaveFlow;
+        const newPromise = new Promise(() => {});
+        sandbox.stub(LinkSaveFlow.prototype, 'start').callsFake(function () {
+          linkSaveFlow = this;
+          return newPromise;
+        });
+        const requestPromise = new Promise((resolve) => {
+          resolve({token: 'test'});
+        });
+        runtime.saveSubscription(() => requestPromise);
+
+        await runtime.documentParsed_;
+        expect(linkSaveFlow.callback_()).to.equal(requestPromise);
+
+        const request = await linkSaveFlow.callback_();
+        expect(request).to.deep.equal({token: 'test'});
       });
-      const requestPromise = new Promise((resolve) => {
-        resolve({token: 'test'});
+
+      it('starts LinkSaveFlow with callback for authcode', async () => {
+        let linkSaveFlow;
+        const newPromise = new Promise(() => {});
+        sandbox.stub(LinkSaveFlow.prototype, 'start').callsFake(function () {
+          linkSaveFlow = this;
+          return newPromise;
+        });
+        runtime.saveSubscription(() => ({authCode: 'testCode'}));
+
+        await runtime.documentParsed_;
+        expect(linkSaveFlow.callback_()).to.deep.equal({authCode: 'testCode'});
       });
-      runtime.saveSubscription(() => requestPromise);
 
-      await runtime.documentParsed_;
-      expect(linkSaveFlow.callback_()).to.equal(requestPromise);
-
-      const request = await linkSaveFlow.callback_();
-      expect(request).to.deep.equal({token: 'test'});
-    });
-
-    it('should start saveSubscriptionFlow with callback for authcode', async () => {
-      let linkSaveFlow;
-      const newPromise = new Promise(() => {});
-      sandbox.stub(LinkSaveFlow.prototype, 'start').callsFake(function () {
-        linkSaveFlow = this;
-        return newPromise;
+      it('returns promise with result of LinkSaveFlow start()', async () => {
+        sandbox.stub(LinkSaveFlow.prototype, 'start').resolves(true);
+        const requestPromise = new Promise((resolve) => {
+          resolve({token: 'test'});
+        });
+        const result = await runtime.saveSubscription(() => requestPromise);
+        expect(result).to.equal(true);
       });
-      runtime.saveSubscription(() => ({authCode: 'testCode'}));
-
-      await runtime.documentParsed_;
-      expect(linkSaveFlow.callback_()).to.deep.equal({authCode: 'testCode'});
     });
 
     it('should start LoginPromptApi', async () => {

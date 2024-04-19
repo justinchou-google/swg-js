@@ -15,17 +15,29 @@
  */
 'use strict';
 
+const {swgPageUrl} = require('../util');
+
 /**
  * @fileoverview Page object for the extended access feature on scenic.
  */
 
 module.exports = {
   url: function () {
-    return this.api.launchUrl + '?metering';
+    return swgPageUrl(
+      this.api.launchUrl,
+      '/examples/sample-pub/1?metering',
+      this.api.globals.swg_experiments
+    );
   },
   elements: {
     swgRegwallDialog: {
       selector: '#swg-regwall-dialog',
+    },
+    title: {
+      selector: '.gaa-metering-regwall--title',
+    },
+    description: {
+      selector: '.gaa-metering-regwall--description',
     },
   },
 };

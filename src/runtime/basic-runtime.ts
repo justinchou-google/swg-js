@@ -16,6 +16,7 @@
 
 import {ActivityPortDef, ActivityPorts} from '../components/activities';
 import {AnalyticsService} from './analytics-service';
+import {AudienceActionLocalFlow} from './audience-action-local-flow';
 import {AudienceActivityEventListener} from './audience-activity-listener';
 import {AutoPromptManager} from './auto-prompt-manager';
 import {
@@ -521,8 +522,14 @@ export class ConfiguredBasicRuntime implements Deps, BasicSubscriptions {
 
     const jwt = response['jwt'];
     if (jwt) {
-      // If entitlements are returned, close the subscription/contribution offers iframe
-      this.configuredClassicRuntime_.closeDialog();
+      // If entitlements are returned, close the prompt
+      const lastAudienceActionFlow =
+        this.autoPromptManager_.getLastAudienceActionFlow();
+      if (lastAudienceActionFlow instanceof AudienceActionLocalFlow) {
+        lastAudienceActionFlow.close();
+      } else {
+        this.configuredClassicRuntime_.closeDialog();
+      }
 
       // Also save the entitlements and user token
       this.entitlementsManager().pushNextEntitlements(jwt);
@@ -594,6 +601,7 @@ export class ConfiguredBasicRuntime implements Deps, BasicSubscriptions {
   /**
    * Sets up all the buttons on the page with attribute
    * 'swg-standard-button:subscription' or 'swg-standard-button:contribution'.
+   * Prompts are dismissible as they are triggered by user clicks (b/281122183).
    */
   async setupButtons(): Promise<void> {
     const enable = await this.clientConfigManager().shouldEnableButton();
@@ -608,12 +616,12 @@ export class ConfiguredBasicRuntime implements Deps, BasicSubscriptions {
       {
         [ButtonAttributeValues.SUBSCRIPTION]: () => {
           this.configuredClassicRuntime_.showOffers({
-            isClosable: !this.pageConfig().isLocked(),
+            isClosable: true,
           });
         },
         [ButtonAttributeValues.CONTRIBUTION]: () => {
           this.configuredClassicRuntime_.showContributionOptions({
-            isClosable: !this.pageConfig().isLocked(),
+            isClosable: true,
           });
         },
       }

@@ -50,7 +50,12 @@ import {msg} from '../utils/i18n';
 import {parseUrl} from '../utils/url';
 import {warn} from '../utils/log';
 
-export interface AudienceActionParams {
+export interface AudienceActionFlow {
+  start: () => void;
+  showNoEntitlementFoundToast: () => void;
+}
+
+export interface AudienceActionIframeParams {
   action: string;
   configurationId?: string;
   onCancel?: () => void;
@@ -59,10 +64,16 @@ export interface AudienceActionParams {
   isClosable?: boolean;
 }
 
+// Action types returned by the article endpoint
+export const TYPE_REGISTRATION_WALL = 'TYPE_REGISTRATION_WALL';
+export const TYPE_NEWSLETTER_SIGNUP = 'TYPE_NEWSLETTER_SIGNUP';
+export const TYPE_REWARDED_SURVEY = 'TYPE_REWARDED_SURVEY';
+export const TYPE_REWARDED_AD = 'TYPE_REWARDED_AD';
+
 const actionToIframeMapping: {[key: string]: string} = {
-  'TYPE_REGISTRATION_WALL': '/regwalliframe',
-  'TYPE_NEWSLETTER_SIGNUP': '/newsletteriframe',
-  'TYPE_REWARDED_SURVEY': '/surveyiframe',
+  TYPE_REGISTRATION_WALL: '/regwalliframe',
+  TYPE_NEWSLETTER_SIGNUP: '/newsletteriframe',
+  TYPE_REWARDED_SURVEY: '/surveyiframe',
 };
 
 const autopromptTypeToProductTypeMapping: {
@@ -81,7 +92,7 @@ const placeholderPatternForEmail = /<ph name="EMAIL".+?\/ph>/g;
 /**
  * The flow to initiate and manage handling an audience action.
  */
-export class AudienceActionFlow {
+export class AudienceActionIframeFlow implements AudienceActionFlow {
   private readonly productType_: ProductType;
   private readonly dialogManager_: DialogManager;
   private readonly entitlementsManager_: EntitlementsManager;
@@ -91,7 +102,7 @@ export class AudienceActionFlow {
 
   constructor(
     private readonly deps_: Deps,
-    private readonly params_: AudienceActionParams
+    private readonly params_: AudienceActionIframeParams
   ) {
     this.productType_ = params_.autoPromptType
       ? autopromptTypeToProductTypeMapping[params_.autoPromptType]!
@@ -105,15 +116,18 @@ export class AudienceActionFlow {
 
     this.storage_ = deps_.storage();
 
+    const iframeParams: {[key: string]: string} = {
+      'origin': parseUrl(deps_.win().location.href).origin,
+      'configurationId': this.params_.configurationId || '',
+      'isClosable': (!!params_.isClosable).toString(),
+    };
+    if (this.clientConfigManager_.shouldForceLangInIframes()) {
+      iframeParams['hl'] = this.clientConfigManager_.getLanguage();
+    }
     this.activityIframeView_ = new ActivityIframeView(
       deps_.win(),
       deps_.activities(),
-      feUrl(actionToIframeMapping[params_.action], {
-        'origin': parseUrl(deps_.win().location.href).origin,
-        'configurationId': this.params_.configurationId || '',
-        'hl': this.clientConfigManager_.getLanguage(),
-        'isClosable': (!!params_.isClosable).toString(),
-      }),
+      feUrl(actionToIframeMapping[params_.action], iframeParams),
       feArgs({
         'supportsEventManager': true,
         'productType': this.productType_,
@@ -150,6 +164,7 @@ export class AudienceActionFlow {
       /* hidden */ false,
       /* dialogConfig */ {
         shouldDisableBodyScrolling: true,
+        closeOnBackgroundClick: !!this.params_.isClosable,
       }
     );
   }
@@ -385,7 +400,8 @@ export class AudienceActionFlow {
   ): boolean {
     if (
       !GoogleAnalyticsEventListener.isGaEligible(this.deps_) &&
-      !GoogleAnalyticsEventListener.isGtagEligible(this.deps_)
+      !GoogleAnalyticsEventListener.isGtagEligible(this.deps_) &&
+      !GoogleAnalyticsEventListener.isGtmEligible(this.deps_)
     ) {
       return false;
     }
@@ -397,15 +413,22 @@ export class AudienceActionFlow {
         isFromUserAction: true,
         additionalParameters: null,
       };
-      // TODO(yeongjinoh): Remove default dimensions once beta publishers complete
-      // migration to GA4.
+
       const eventParams = {
         googleAnalyticsParameters: {
-          'event_category': question.getQuestionCategory() || '',
+          // Custom dimensions.
           'survey_question': question.getQuestionText() || '',
           'survey_question_category': question.getQuestionCategory() || '',
           'survey_answer': answer.getAnswerText() || '',
           'survey_answer_category': answer.getAnswerCategory() || '',
+          // GA4 Default dimensions.
+          'content_id': question.getQuestionCategory() || '',
+          'content_group': question.getQuestionText() || '',
+          'content_type': answer.getAnswerText() || '',
+          // UA Default dimensions.
+          // TODO(yeongjinoh): Remove default dimensions once beta publishers
+          // complete migration to GA4.
+          'event_category': question.getQuestionCategory() || '',
           'event_label': answer.getAnswerText() || '',
         },
       };

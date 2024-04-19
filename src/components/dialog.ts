@@ -66,7 +66,7 @@ const resetViewStyles = {
 };
 
 /**
- * Display configration options for dialogs.
+ * Display configuration options for dialogs.
  *
  * Properties:
  * - desktopConfig: Options for dialogs on desktop screens.
@@ -76,12 +76,15 @@ const resetViewStyles = {
  *       default classes such as swg-dialog.
  * - shouldDisableBodyScrolling: Whether to disable scrolling on the content page
  *       when the dialog is visible.
+ * - closeOnBackgroundClick: Whether the dialog should be dismissed if the gray
+ *                           background is clicked.
  */
 export interface DialogConfig {
   desktopConfig?: DesktopDialogConfig;
   maxAllowedHeightRatio?: number;
   iframeCssClassOverride?: string;
   shouldDisableBodyScrolling?: boolean;
+  closeOnBackgroundClick?: boolean;
 }
 
 /**
@@ -112,11 +115,13 @@ export class Dialog {
   /** Helps identify stale animations. */
   private animationNumber_: number;
   private hidden_: boolean;
+  private closeOnBackgroundClick_?: boolean;
   private previousProgressView_: View | null;
   private maxAllowedHeightRatio_: number;
   private positionCenterOnDesktop_: boolean;
   private shouldDisableBodyScrolling_: boolean;
   private desktopMediaQuery_: MediaQueryList;
+  private enableBackgroundClickExperiment_: Promise<Boolean>;
   /** Reference to the listener that acts on changes to desktopMediaQuery. */
   private desktopMediaQueryListener_: (() => void) | null;
 
@@ -127,7 +132,8 @@ export class Dialog {
     doc: Doc,
     importantStyles: {[key: string]: string} = {},
     styles: {[key: string]: string} = {},
-    dialogConfig: DialogConfig = {}
+    dialogConfig: DialogConfig = {},
+    enableBackgroundClickExperiment = Promise.resolve(false)
   ) {
     this.doc_ = doc;
 
@@ -145,6 +151,9 @@ export class Dialog {
     });
 
     this.graypane_ = new Graypane(doc, Z_INDEX - 1);
+
+    this.closeOnBackgroundClick_ = dialogConfig.closeOnBackgroundClick;
+    this.enableBackgroundClickExperiment_ = enableBackgroundClickExperiment;
 
     const modifiedImportantStyles = Object.assign(
       {},
@@ -190,6 +199,22 @@ export class Dialog {
    * Opens the dialog and builds the iframe container.
    */
   async open(hidden = false): Promise<Dialog> {
+    // If this experiment is active, the behavior of the grey background
+    // changes.  If closable, clicking the background closes the dialog.  If not
+    // closable, clicking the background now prevents you from clicking links
+    // on the main page.
+    const enableBackgroundClickExperiment = await this
+      .enableBackgroundClickExperiment_;
+
+    if (
+      enableBackgroundClickExperiment &&
+      this.closeOnBackgroundClick_ !== undefined
+    ) {
+      this.graypane_
+        .getElement()
+        .addEventListener('click', this.onGrayPaneClick_.bind(this));
+    }
+
     const iframe = this.iframe_;
     if (iframe.isConnected()) {
       throw new Error('already opened');
@@ -377,7 +402,7 @@ export class Dialog {
 
     // If the current view should fade the parent document.
     if (view.shouldFadeBody() && !this.hidden_) {
-      this.graypane_.show(/* animated */ true);
+      this.graypane_.show(/* animated */ view.shouldAnimateFade());
     }
 
     await view.init(this);
@@ -386,7 +411,7 @@ export class Dialog {
     });
     if (this.hidden_) {
       if (view.shouldFadeBody()) {
-        this.graypane_.show(/* animated */ true);
+        this.graypane_.show(/* animated */ view.shouldAnimateFade());
       }
       this.show_();
     }
@@ -420,6 +445,22 @@ export class Dialog {
     });
 
     this.hidden_ = false;
+  }
+
+  /** Suppresses click events and may close the window. */
+  private onGrayPaneClick_(event: Event) {
+    event.stopPropagation();
+    if (this.closeOnBackgroundClick_) {
+      const viewEl = this.view_!.getElement();
+      const contentWindow = viewEl.contentWindow!;
+      if (contentWindow) {
+        const origin = viewEl.src ? new URL(viewEl.src).origin : '*';
+        // The boq iframe must be listening for this event in order for it to
+        // work.
+        contentWindow.postMessage('close', origin);
+      }
+    }
+    return false;
   }
 
   /**

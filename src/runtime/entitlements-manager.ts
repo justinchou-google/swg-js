@@ -25,7 +25,7 @@ import {
   Timestamp,
 } from '../proto/api_messages';
 import {AnalyticsService} from './analytics-service';
-import {AudienceActionFlow} from './audience-action-flow';
+import {AudienceActionIframeFlow} from './audience-action-flow';
 import {ClientConfig} from '../model/client-config';
 import {ClientEvent} from '../api/client-event-manager-api';
 import {
@@ -75,22 +75,25 @@ export interface ShowInterventionParams {
 export interface Intervention {
   readonly type: string;
   readonly configurationId?: string;
+  readonly preference?: string;
 }
 
 export class AvailableIntervention implements Intervention {
   readonly type: string;
   readonly configurationId?: string;
+  readonly preference?: string;
 
   constructor(original: Intervention, private readonly deps_: Deps) {
     this.type = original.type;
     this.configurationId = original.configurationId;
+    this.preference = original.preference;
   }
 
   /**
    * Starts the intervention flow.
    */
   show(params: ShowInterventionParams): Promise<void> {
-    const flow = new AudienceActionFlow(this.deps_, {
+    const flow = new AudienceActionIframeFlow(this.deps_, {
       isClosable: params.isClosable,
       action: this.type,
       configurationId: this.configurationId,
@@ -851,6 +854,10 @@ export class EntitlementsManager {
       }
     }
 
+    // Add locked param.
+    if (this.useArticleEndpoint_) {
+      url = addQueryParam(url, 'locked', String(this.pageConfig_.isLocked()));
+    }
     const hashedCanonicalUrl = await this.getHashedCanonicalUrl_();
 
     let encodableParams: GetEntitlementsParamsInternalDef | undefined = this

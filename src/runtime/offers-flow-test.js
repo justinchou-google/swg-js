@@ -219,24 +219,10 @@ describes.realWin('OffersFlow', (env) => {
     await offersFlow.start();
   });
 
-  it('start should not show offers if predicates disable', async () => {
+  it('start should show offers', async () => {
     sandbox.stub(runtime.clientConfigManager(), 'getClientConfig').resolves(
       new ClientConfig({
         useUpdatedOfferFlows: true,
-        uiPredicates: {canDisplayAutoPrompt: false},
-      })
-    );
-    offersFlow = new OffersFlow(runtime, {'isClosable': false});
-    callbacksMock.expects('triggerFlowStarted').never();
-
-    await offersFlow.start();
-  });
-
-  it('start should show offers if predicates enable', async () => {
-    sandbox.stub(runtime.clientConfigManager(), 'getClientConfig').resolves(
-      new ClientConfig({
-        useUpdatedOfferFlows: true,
-        uiPredicates: {canDisplayAutoPrompt: true},
       })
     );
     offersFlow = new OffersFlow(runtime, {'isClosable': false});
@@ -318,6 +304,48 @@ describes.realWin('OffersFlow', (env) => {
         sandbox.match({
           desktopConfig: {isCenterPositioned: true, supportsWideScreen: true},
           shouldDisableBodyScrolling: false,
+        })
+      )
+      .once();
+    await offersFlow.start();
+  });
+
+  it('passes isClosable to openView when false for new offer flows', async () => {
+    const clientConfigManager = runtime.clientConfigManager();
+    sandbox.stub(clientConfigManager, 'getClientConfig').resolves(
+      new ClientConfig({
+        useUpdatedOfferFlows: true,
+      })
+    );
+    offersFlow = new OffersFlow(runtime, {'isClosable': false});
+    dialogManagerMock
+      .expects('openView')
+      .withExactArgs(
+        sandbox.match.any,
+        false,
+        sandbox.match({
+          closeOnBackgroundClick: false,
+        })
+      )
+      .once();
+    await offersFlow.start();
+  });
+
+  it('passes isClosable to openView when true for new offer flows', async () => {
+    const clientConfigManager = runtime.clientConfigManager();
+    sandbox.stub(clientConfigManager, 'getClientConfig').resolves(
+      new ClientConfig({
+        useUpdatedOfferFlows: true,
+      })
+    );
+    offersFlow = new OffersFlow(runtime, {'isClosable': true});
+    dialogManagerMock
+      .expects('openView')
+      .withExactArgs(
+        sandbox.match.any,
+        false,
+        sandbox.match({
+          closeOnBackgroundClick: true,
         })
       )
       .once();

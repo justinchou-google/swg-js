@@ -23,6 +23,17 @@ interface AutoPromptConfigParams {
   impressionBackOffSeconds?: number;
   maxImpressions?: number;
   maxImpressionsResultingHideSeconds?: number;
+  globalFrequencyCapDurationSeconds?: number;
+  globalFrequencyCapDurationNano?: number;
+  promptFrequencyCaps?: {
+    audienceActionType?: string;
+    frequencyCapDuration?: {
+      seconds?: number;
+      nano?: number;
+    };
+  }[];
+  anyPromptFrequencyCapDurationSeconds?: number;
+  anyPromptFrequencyCapDurationNano?: number;
 }
 
 /**
@@ -32,6 +43,7 @@ export class AutoPromptConfig {
   clientDisplayTrigger: ClientDisplayTrigger;
   explicitDismissalConfig: ExplicitDismissalConfig;
   impressionConfig: ImpressionConfig;
+  frequencyCapConfig: FrequencyCapConfig;
 
   /**
    * @param {!AutoPromptConfigParams=} params
@@ -45,6 +57,11 @@ export class AutoPromptConfig {
     impressionBackOffSeconds,
     maxImpressions,
     maxImpressionsResultingHideSeconds,
+    globalFrequencyCapDurationSeconds,
+    globalFrequencyCapDurationNano,
+    promptFrequencyCaps,
+    anyPromptFrequencyCapDurationSeconds,
+    anyPromptFrequencyCapDurationNano,
   }: AutoPromptConfigParams) {
     this.clientDisplayTrigger = new ClientDisplayTrigger(
       displayDelaySeconds,
@@ -59,6 +76,30 @@ export class AutoPromptConfig {
       impressionBackOffSeconds,
       maxImpressions,
       maxImpressionsResultingHideSeconds
+    );
+    this.frequencyCapConfig = new FrequencyCapConfig(
+      new GlobalFrequencyCap(
+        new Duration(
+          globalFrequencyCapDurationSeconds,
+          globalFrequencyCapDurationNano
+        )
+      ),
+      promptFrequencyCaps?.map(
+        (promptFrequencyCap) =>
+          new PromptFrequencyCap(
+            promptFrequencyCap.audienceActionType,
+            new Duration(
+              promptFrequencyCap.frequencyCapDuration?.seconds,
+              promptFrequencyCap.frequencyCapDuration?.nano
+            )
+          )
+      ),
+      new AnyPromptFrequencyCap(
+        new Duration(
+          anyPromptFrequencyCapDurationSeconds,
+          anyPromptFrequencyCapDurationNano
+        )
+      )
     );
   }
 }
@@ -92,5 +133,38 @@ export class ImpressionConfig {
     public readonly backOffSeconds?: number,
     public readonly maxImpressions?: number,
     public readonly maxImpressionsResultingHideSeconds?: number
+  ) {}
+}
+
+/**
+ * Configuration of Prompt Frequency Capping.
+ */
+export class FrequencyCapConfig {
+  constructor(
+    public readonly globalFrequencyCap?: GlobalFrequencyCap,
+    public readonly promptFrequencyCaps?: PromptFrequencyCap[],
+    public readonly anyPromptFrequencyCap?: AnyPromptFrequencyCap
+  ) {}
+}
+
+export class GlobalFrequencyCap {
+  constructor(public readonly frequencyCapDuration?: Duration) {}
+}
+
+export class PromptFrequencyCap {
+  constructor(
+    public readonly audienceActionType?: string,
+    public readonly frequencyCapDuration?: Duration
+  ) {}
+}
+
+export class AnyPromptFrequencyCap {
+  constructor(public readonly frequencyCapDuration?: Duration) {}
+}
+
+export class Duration {
+  constructor(
+    public readonly seconds?: number,
+    public readonly nano?: number
   ) {}
 }

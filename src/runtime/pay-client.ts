@@ -29,24 +29,11 @@ import {Preconnect} from '../utils/preconnect';
 import {StorageKeys} from '../utils/constants';
 import {bytesToString, stringToBytes} from '../utils/bytes';
 import {createCancelError} from '../utils/errors';
-import {feCached} from './services';
 import {getSwgMode} from './services';
 
 export interface PayOptionsDef {
   forceRedirect?: boolean;
   forceDisableNative?: boolean;
-}
-
-/**
- * Visible for testing only.
- */
-export const PAY_ORIGIN: {[key: string]: string} = {
-  'PRODUCTION': 'https://pay.google.com',
-  'SANDBOX': 'https://pay.sandbox.google.com',
-};
-
-function payUrl(): string {
-  return feCached(PAY_ORIGIN[getSwgMode().payEnv] + '/gp/p/ui/pay');
 }
 
 export interface PaymentCancelledError extends Error {
@@ -109,7 +96,6 @@ export class PayClient {
   }
 
   preconnect(pre: Preconnect): void {
-    pre.prefetch(payUrl());
     pre.prefetch(
       'https://payments.google.com/payments/v4/js/integrator.js?ss=md'
     );
@@ -169,8 +155,13 @@ export class PayClient {
       'disableNative',
       // The page cannot be iframed at this time. May be relaxed later
       // for AMP and similar contexts.
-      options.forceDisableNative || this.win_ != this.top_()
+      // Always disable native see b/298029927 jpettit 2023-08-30
+      // restore when b/298029927 fixed
+      true // options.forceDisableNative || this.win_ != this.top_()
     );
+
+    // Disable Next-gen buyflow until it's supported by SwG integration
+    setInternalParam(paymentRequest, 'disableNgbf', true);
 
     let resolver: (result: boolean) => void;
     const promise = new Promise<boolean>((resolve) => {
@@ -249,9 +240,10 @@ export class PayClient {
   }
 
   /** Only exists for testing since it's not possible to override `window.top`. */
-  private top_(): Window {
-    return this.win_.top!;
-  }
+  // b/298029927
+  // private top_(): Window {
+  //   return this.win_.top!;
+  // }
 }
 
 interface RedirectVerifierPairDef {
@@ -270,14 +262,10 @@ interface RedirectVerifierPairDef {
  * Visible for testing only.
  */
 export class RedirectVerifierHelper {
-  pairPromise_: Promise<RedirectVerifierPairDef | null> | null = null;
-  pair_: RedirectVerifierPairDef | null = null;
+  private pairPromise_: Promise<RedirectVerifierPairDef | null> | null = null;
+  private pair_: RedirectVerifierPairDef | null = null;
 
-  constructor(private readonly win_: Window) {
-    this.pairPromise_ = null;
-
-    this.pair_ = null;
-  }
+  constructor(private readonly win_: Window) {}
 
   /**
    * To avoid popup blockers, the key/verifier pair is created as soon as
