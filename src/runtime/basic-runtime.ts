@@ -247,7 +247,7 @@ export class BasicRuntime implements BasicSubscriptions {
       isClosable,
     });
     this.setOnLoginRequest();
-    this.processEntitlements();
+    // this.processEntitlements();
   }
 
   async setOnEntitlementsResponse(

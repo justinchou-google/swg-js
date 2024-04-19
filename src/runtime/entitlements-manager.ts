@@ -201,6 +201,11 @@ export class EntitlementsManager {
   async getEntitlements(
     params?: GetEntitlementsParamsExternalDef
   ): Promise<Entitlements> {
+    const exitEarly = true;
+    if (exitEarly) {
+      return Promise.resolve();
+    }
+
     // Remain backwards compatible by accepting
     // `encryptedDocumentKey` string as a first param.
     if (typeof params === 'string') {
@@ -849,6 +854,10 @@ export class EntitlementsManager {
       }
     }
 
+    // Add locked param.
+    if (this.useArticleEndpoint_) {
+      url = addQueryParam(url, 'locked', String(this.pageConfig_.isLocked()));
+    }
     const hashedCanonicalUrl = await this.getHashedCanonicalUrl_();
 
     let encodableParams: GetEntitlementsParamsInternalDef | undefined = this
