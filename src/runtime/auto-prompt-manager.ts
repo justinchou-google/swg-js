@@ -240,6 +240,7 @@ export class AutoPromptManager {
     // Manual override of display rules, mainly for demo purposes. Requires
     // contribution or subscription to be set as autoPromptType in snippet.
     if (params.alwaysShow) {
+      console.log('in always show');
       this.showPrompt_(
         this.getPromptTypeToDisplay_(params.autoPromptType),
         this.getLargeMonetizationPromptFn_(
@@ -377,11 +378,24 @@ export class AutoPromptManager {
       }
 
       // Add display delay to dismissible prompts.
-      const displayDelayMs = isClosable
-        ? (clientConfig?.autoPromptConfig?.clientDisplayTrigger
-            ?.displayDelaySeconds || 0) * SECOND_IN_MILLIS
-        : 0;
-      this.deps_.win().setTimeout(promptFn, displayDelayMs);
+      // const displayDelayMs = isClosable
+      //   ? (clientConfig?.autoPromptConfig?.clientDisplayTrigger
+      //       ?.displayDelaySeconds || 0) * SECOND_IN_MILLIS
+      //   : 0;
+      // this.deps_.win().setTimeout(promptFn, displayDelayMs);
+      console.log('hello!!');
+      window.addEventListener('scroll', function () {
+        console.log('scrolling');
+        if (window.innerHeight + window.scrollY >= document.body.offsetHeight) {
+          console.log('scrolled to bottom');
+          promptFn();
+        }
+        // if (window.scrollY === window.document.body.scrollHeight) {
+        //   // The user has scrolled to the bottom of the page.
+        //   console.log('scrolled to bottom');
+        //   promptFn();
+        // }
+      });
       return;
     }
     // Legacy Triggering Flow, to be deprecated after Prompt Frequency Cap
